@@ -1,0 +1,130 @@
+# The gateway and the terminals.
+#
+# The engine has its own workflow because it has its own rule — no floating
+# point reaches the trade path — and its own determinism matrix. This one
+# covers everything built on top: the socket that owns the engine, and the
+# screens that talk to it.
+#
+# The images are built here too. A Dockerfile that is only ever built by hand
+# on a laptop is a Dockerfile that stops working quietly.
+
+name: platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  gateway:
+    name: gateway
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: rustup component add clippy rustfmt
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            gateway/target
+          key: ${{ runner.os }}-gateway-${{ hashFiles('gateway/Cargo.lock') }}
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets
+
+      - name: Test
+        run: cargo test
+
+      # The build must not depend on a key being present. A gateway that
+      # only compiles on a machine with a .env is one nobody else can ship.
+      - name: Build without any settings
+        run: cargo build --release --locked
+
+  web:
+    name: terminals
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `npm run build` typechecks before it bundles, so this covers both.
+      - name: Typecheck and build
+        run: npm run build
+
+      # The money rules are duplicated in TypeScript on purpose — the
+      # terminal must not round differently from the engine — so the parity
+      # tests are the thing standing between a displayed figure and a wrong
+      # one. Fail loudly if they ever stop running.
+      - name: The parity tests ran
+        run: |
+          npm test -- --reporter=json --outputFile=/tmp/vitest.json >/dev/null
+          node -e "
+            const r = require('/tmp/vitest.json');
+            const money = r.testResults.find(f => f.name.includes('money.test'));
+            if (!money || money.status !== 'passed') {
+              console.error('::error::the money parity tests did not run or did not pass');
+              process.exit(1);
+            }
+            console.log('money parity: ' + money.assertionResults.length + ' assertions passed');
+          "
+
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    needs: [gateway, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: gateway/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build the terminals image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: web/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A compose file with a typo in it fails at three in the morning, not
+      # here, unless something checks.
+      - name: The compose file parses
+        run: docker compose -f docker-compose.yml config >/dev/null

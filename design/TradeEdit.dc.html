@@ -1,0 +1,282 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0E1418; color: #E4EBF0; font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+    a { color: #E0A040; text-decoration: none; } a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A; }
+    .ph { display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 11px; border-bottom: 1px solid #26333B; background: #121A20; }
+    table { border-collapse: collapse; width: 100%; }
+    th { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: #677D8A; font-weight: 400; text-align: left; padding: 5px 10px; border-bottom: 1px solid #26333B; background: #121A20; }
+    td { padding: 5px 10px; border-bottom: 1px solid #1B252C; }
+    .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+    .sym { font-weight: 600; } .up { color: #3FBF8F; } .dn { color: #E8635A; } .dim { color: #677D8A; }
+    .pill { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; display: inline-block; }
+    .btn { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.05em; padding: 4px 9px; border: 1px solid #35454F; color: #9DAFBB; display: inline-block; white-space: nowrap; }
+    .fld { height: 30px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 9px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: 12px; }
+    .fld-ro { border-color: #26333B; color: #677D8A; }
+    .fld-ed { border-color: #E0A040; color: #E0A040; }
+    .tab { padding: 0 13px; height: 34px; display: flex; align-items: center; font-size: 11px; color: #9DAFBB; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0E1418; position: relative; overflow: hidden;">
+
+  <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 16px; background: #121A20; border-bottom: 1px solid #26333B;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15.5 L7 9.5 L11 12 L17 4"></path><path d="M3 17.5 L17 17.5"></path></svg>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.02em;">FERARO</span>
+      <span class="cap" style="padding-top: 2px;">Admin</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="pill" style="background: #301A17; color: #E8635A;">Trade amendment &middot; dual control</span>
+      <div style="width: 1px; height: 26px; background: #26333B;"></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span class="m" style="font-size: 11px;">S. Whitfield</span><span class="cap">Administrator</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 34px; flex: none; display: flex; align-items: stretch; background: #0E1418; border-bottom: 1px solid #26333B; padding: 0 8px;">
+    <div class="tab">Instruments</div>
+    <div class="tab">Groups</div>
+    <div class="tab">Accounts</div>
+    <div class="tab" style="color: #E4EBF0; box-shadow: inset 0 -2px 0 0 {{accent}};">Trades</div>
+    <div class="tab">Funds</div>
+    <div class="tab">Activity</div>
+    <div class="tab">Audit</div>
+  </div>
+
+  <!-- Body -->
+  <div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: 306px minmax(0, 1fr) 384px; gap: 1px; background: #26333B;">
+
+    <!-- Trade search -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap">Trades</span><span class="m dim" style="font-size: 10px;">12,408</span></div>
+      <div style="padding: 7px 10px; border-bottom: 1px solid #26333B; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 7px; border: 1px solid #35454F; background: #0E1418; height: 28px; padding: 0 9px;">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#677D8A" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 L14 14"></path></svg>
+          <span class="m dim" style="font-size: 11px;">Ticket, account or symbol</span>
+        </div>
+        <div style="display: flex; gap: 5px;">
+          <span class="btn" style="flex-grow: 1; text-align: center; color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500;">Open</span>
+          <span class="btn" style="flex-grow: 1; text-align: center;">Closed</span>
+          <span class="btn" style="flex-grow: 1; text-align: center;">Amended</span>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Ticket</th><th>Account</th><th>Symbol</th><th class="n">Vol</th><th class="n">P&amp;L</th></tr></thead>
+        <tbody>
+          <tr style="background: #1B252C;"><td class="m">100482</td><td class="m dim">1001</td><td class="sym">EURUSD</td><td class="n">1.00</td><td class="n up">+46.00</td></tr>
+          <tr><td class="m">100479</td><td class="m dim">1001</td><td class="sym">XAUUSD</td><td class="n">0.50</td><td class="n up">+217.00</td></tr>
+          <tr><td class="m">100471</td><td class="m dim">1001</td><td class="sym">USDJPY</td><td class="n">0.30</td><td class="n dn">&minus;104.00</td></tr>
+          <tr><td class="m">100468</td><td class="m dim">4471</td><td class="sym">XAUUSD</td><td class="n">8.00</td><td class="n dn">&minus;2,940.00</td></tr>
+          <tr><td class="m">100455</td><td class="m dim">3908</td><td class="sym">GER40</td><td class="n">4.00</td><td class="n dn">&minus;1,208.00</td></tr>
+          <tr><td class="m">100442</td><td class="m dim">5120</td><td class="sym">EURUSD</td><td class="n">40.00</td><td class="n up">+3,120.00</td></tr>
+          <tr><td class="m">100438</td><td class="m dim">2244</td><td class="sym">BTCUSD</td><td class="n">2.00</td><td class="n dn">&minus;880.00</td></tr>
+          <tr><td class="m">100431</td><td class="m dim">6017</td><td class="sym">USOIL</td><td class="n">6.00</td><td class="n up">+412.00</td></tr>
+          <tr><td class="m">100427</td><td class="m dim">1001</td><td class="sym">GBPUSD</td><td class="n">2.00</td><td class="n up">+188.00</td></tr>
+          <tr><td class="m">100419</td><td class="m dim">7742</td><td class="sym">US500</td><td class="n">3.00</td><td class="n dn">&minus;96.00</td></tr>
+          <tr><td class="m">100404</td><td class="m dim">3908</td><td class="sym">EURJPY</td><td class="n">1.50</td><td class="n up">+64.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Chart with the trade on it -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span style="font-size: 11px; font-weight: 600;">EURUSD &middot; M5 &middot; ticket 100482</span>
+          <span class="m dim" style="font-size: 10px;">Opened 03.09 09:41:12 &middot; still open</span>
+        </div>
+        <span class="cap">Drag a line to amend</span>
+      </div>
+      <div style="flex-grow: 1; min-height: 0; padding: 6px 0;">
+        <svg viewBox="0 0 700 380" width="100%" height="100%" preserveAspectRatio="none" role="img" aria-label="EURUSD candles with the original entry at 1.08484 and a proposed amended entry at 1.08464">
+          <g stroke="#1C262E" stroke-width="1" stroke-dasharray="2 4">
+            <line x1="4" y1="37.6" x2="620" y2="37.6"></line><line x1="4" y1="108.2" x2="620" y2="108.2"></line>
+            <line x1="4" y1="178.8" x2="620" y2="178.8"></line><line x1="4" y1="249.4" x2="620" y2="249.4"></line>
+            <line x1="4" y1="320" x2="620" y2="320"></line>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A">
+            <text x="628" y="41">1.08700</text><text x="628" y="112">1.08620</text><text x="628" y="182">1.08540</text>
+            <text x="628" y="253">1.08460</text><text x="628" y="324">1.08380</text>
+          </g>
+          <g stroke-width="1.3">
+            <line x1="16" y1="245.9" x2="16" y2="261.8" stroke="#3FBF8F"></line><rect x="7" y="249.4" width="18" height="7.1" fill="#3FBF8F"></rect>
+            <line x1="48" y1="238.8" x2="48" y2="252.9" stroke="#3FBF8F"></line><rect x="39" y="242.3" width="18" height="7.1" fill="#3FBF8F"></rect>
+            <line x1="80" y1="235.3" x2="80" y2="249.4" stroke="#E8635A"></line><rect x="71" y="242.3" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="112" y1="240.6" x2="112" y2="254.7" stroke="#E8635A"></line><rect x="103" y="245.9" width="18" height="5.3" fill="#E8635A"></rect>
+            <line x1="144" y1="242.3" x2="144" y2="256.5" stroke="#3FBF8F"></line><rect x="135" y="244.1" width="18" height="7.1" fill="#3FBF8F"></rect>
+            <line x1="176" y1="231.8" x2="176" y2="245.9" stroke="#3FBF8F"></line><rect x="167" y="233.5" width="18" height="10.6" fill="#3FBF8F"></rect>
+            <line x1="208" y1="226.5" x2="208" y2="238.8" stroke="#E8635A"></line><rect x="199" y="233.5" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="240" y1="230" x2="240" y2="242.3" stroke="#3FBF8F"></line><rect x="231" y="231.8" width="18" height="5.3" fill="#3FBF8F"></rect>
+            <line x1="272" y1="221.2" x2="272" y2="235.3" stroke="#3FBF8F"></line><rect x="263" y="223" width="18" height="8.8" fill="#3FBF8F"></rect>
+            <line x1="304" y1="215.9" x2="304" y2="228.2" stroke="#E8635A"></line><rect x="295" y="223" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="336" y1="219.4" x2="336" y2="233.5" stroke="#E8635A"></line><rect x="327" y="226.5" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="368" y1="223" x2="368" y2="235.3" stroke="#3FBF8F"></line><rect x="359" y="224.7" width="18" height="5.3" fill="#3FBF8F"></rect>
+            <line x1="400" y1="212.4" x2="400" y2="226.5" stroke="#3FBF8F"></line><rect x="391" y="214.1" width="18" height="10.6" fill="#3FBF8F"></rect>
+            <line x1="432" y1="207.1" x2="432" y2="219.4" stroke="#E8635A"></line><rect x="423" y="214.1" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="464" y1="210.6" x2="464" y2="223" stroke="#3FBF8F"></line><rect x="455" y="212.4" width="18" height="5.3" fill="#3FBF8F"></rect>
+            <line x1="496" y1="201.8" x2="496" y2="215.9" stroke="#3FBF8F"></line><rect x="487" y="203.5" width="18" height="8.8" fill="#3FBF8F"></rect>
+            <line x1="528" y1="196.5" x2="528" y2="208.8" stroke="#E8635A"></line><rect x="519" y="203.5" width="18" height="3.5" fill="#E8635A"></rect>
+            <line x1="560" y1="200" x2="560" y2="212.4" stroke="#3FBF8F"></line><rect x="551" y="201.8" width="18" height="5.3" fill="#3FBF8F"></rect>
+            <line x1="592" y1="191.2" x2="592" y2="205.3" stroke="#3FBF8F"></line><rect x="583" y="192.9" width="18" height="8.8" fill="#3FBF8F"></rect>
+            <line x1="624" y1="185.9" x2="624" y2="198.2" stroke="#E8635A"></line><rect x="615" y="192.9" width="18" height="3.5" fill="#E8635A"></rect>
+          </g>
+
+          <!-- original entry -->
+          <line x1="4" y1="245.9" x2="620" y2="245.9" stroke="#4C9BE8" stroke-width="1" stroke-dasharray="4 3"></line>
+          <rect x="4" y="237" width="150" height="17" fill="#16304A"></rect>
+          <text x="10" y="249.5" font-family="IBM Plex Mono, monospace" font-size="10" fill="#4C9BE8">ORIGINAL BUY 1.08484</text>
+
+          <!-- amended entry -->
+          <line x1="4" y1="263.5" x2="620" y2="263.5" stroke="#E0A040" stroke-width="1.6"></line>
+          <rect x="4" y="254.5" width="150" height="17" fill="#E0A040"></rect>
+          <text x="10" y="267" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600" fill="#0E1418">AMENDED BUY 1.08464</text>
+          <circle cx="620" cy="263.5" r="4" fill="#E0A040"></circle>
+
+          <line x1="4" y1="187.6" x2="620" y2="187.6" stroke="#677D8A" stroke-width="1"></line>
+          <rect x="620" y="178.6" width="68" height="17" fill="#E4EBF0"></rect>
+          <text x="626" y="191" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600" fill="#0E1418">1.08530</text>
+
+          <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A" text-anchor="middle">
+            <text x="16" y="362">09:20</text><text x="208" y="362">09:50</text><text x="400" y="362">10:20</text><text x="624" y="362">11:00</text>
+          </g>
+          <line x1="4" y1="344" x2="620" y2="344" stroke="#26333B" stroke-width="1"></line>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Edit panel -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap">Amend trade 100482</span><span class="pill" style="background: #2A2118; color: #E0A040;">2 changes</span></div>
+      <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Account</span><div class="fld fld-ro">1001 &middot; A. Verma</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Symbol</span><div class="fld fld-ro">EURUSD</div></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Side</span><div class="fld fld-ro">Buy</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span class="cap" style="color: #E0A040;">Volume &middot; changed</span>
+            <div class="fld fld-ed">1.00 <span class="dim" style="margin-left: 8px; text-decoration: line-through;">1.50</span></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span class="cap" style="color: #E0A040;">Open price &middot; changed</span>
+            <div class="fld fld-ed">1.08464 <span class="dim" style="margin-left: 6px; text-decoration: line-through;">1.08484</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Open time</span><div class="fld">03.09 09:41:12</div></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Stop loss</span><div class="fld">1.08200</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Take profit</span><div class="fld">1.09100</div></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Commission</span><div class="fld">&minus;7.00</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Swap</span><div class="fld">&minus;1.42</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Close price</span><div class="fld fld-ro">&mdash;</div></div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap" style="color: #E8635A;">Reason &middot; required</span>
+          <div style="min-height: 52px; border: 1px solid #E8635A; background: #0E1418; padding: 7px 9px; font-size: 11px; line-height: 1.5; color: #E4EBF0;">Off-market fill during the 09:41 feed gap. Corrected to the LP&rsquo;s confirmed price per ticket SUP-2211.</div>
+        </div>
+
+        <!-- What it does to the money -->
+        <div style="border: 1px solid #35454F; background: #121A20; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+          <span class="cap" style="color: {{accent}};">Effect on the account</span>
+          <div style="display: flex; justify-content: space-between;"><span class="dim" style="font-size: 11px;">Floating P&amp;L</span><span class="m" style="font-size: 11px;"><span class="dim" style="text-decoration: line-through;">+46.00</span> &nbsp;<span class="up">+66.00</span></span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="dim" style="font-size: 11px;">Used margin</span><span class="m" style="font-size: 11px;"><span class="dim" style="text-decoration: line-through;">1,627.98</span> &nbsp;1,085.32</span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="dim" style="font-size: 11px;">Margin level</span><span class="m up" style="font-size: 11px;">2,318%</span></div>
+          <div style="height: 1px; background: #26333B; margin: 2px 0;"></div>
+          <span class="dim" style="font-size: 11px; line-height: 1.5;">Writes a <span class="m" style="color: #9DAFBB;">TradeAmended</span> event at seq 4,182,099. The original fill is never overwritten &mdash; it stays in the journal and the client statement shows both.</span>
+        </div>
+
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500; flex-grow: 1; text-align: center;">Submit for approval</span>
+          <span class="btn">Discard</span>
+        </div>
+        <span class="cap" style="text-align: center;">Needs a second administrator to approve</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Amendment audit -->
+  <div style="flex: none; height: 216px; background: #151D23; border-top: 1px solid #26333B; display: flex; flex-direction: column;">
+    <div class="ph">
+      <span class="cap">Amendment audit &middot; every change ever made to a trade</span>
+      <div style="display: flex; gap: 6px;"><span class="btn">Export CSV</span><span class="btn">Filter by actor</span></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th style="width: 118px;">Timestamp</th><th style="width: 92px;">Seq</th><th style="width: 72px;">Ticket</th><th style="width: 72px;">Account</th><th>Actor</th><th>Field</th><th class="n">Before</th><th class="n">After</th><th>Reason</th><th style="width: 96px;">Approved by</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background: #1B252C;">
+          <td class="m dim">03.09 11:44:02</td><td class="m dim">pending</td><td class="m">100482</td><td class="m dim">1001</td><td>S. Whitfield</td>
+          <td>Open price</td><td class="n dim">1.08484</td><td class="n" style="color: #E0A040;">1.08464</td><td class="dim">Off-market fill &middot; SUP-2211</td>
+          <td><span class="pill" style="background: #2E2513; color: #E0A040;">Awaiting</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">03.09 11:44:02</td><td class="m dim">pending</td><td class="m">100482</td><td class="m dim">1001</td><td>S. Whitfield</td>
+          <td>Volume</td><td class="n dim">1.50</td><td class="n" style="color: #E0A040;">1.00</td><td class="dim">Off-market fill &middot; SUP-2211</td>
+          <td><span class="pill" style="background: #2E2513; color: #E0A040;">Awaiting</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">03.09 10:22:40</td><td class="m dim">4,179,004</td><td class="m">100468</td><td class="m dim">4471</td><td>M. Rao</td>
+          <td>Stop loss</td><td class="n dim">2340.00</td><td class="n">2352.00</td><td class="dim">Client request &middot; call recorded</td>
+          <td class="dim">A. Fenwick</td>
+        </tr>
+        <tr>
+          <td class="m dim">03.09 09:06:11</td><td class="m dim">4,170,882</td><td class="m">100404</td><td class="m dim">3908</td><td>S. Whitfield</td>
+          <td>Close price</td><td class="n dim">170.918</td><td class="n">170.904</td><td class="dim">LP re-rate on settlement</td>
+          <td class="dim">A. Fenwick</td>
+        </tr>
+        <tr>
+          <td class="m dim">02.09 16:48:29</td><td class="m dim">4,152,317</td><td class="m">100388</td><td class="m dim">2244</td><td>A. Fenwick</td>
+          <td>Trade voided</td><td class="n dim">open</td><td class="n dn">cancelled</td><td class="dim">Duplicate submission from bridge</td>
+          <td class="dim">S. Whitfield</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Toast -->
+  <div style="position: absolute; right: 18px; top: 100px; width: 328px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="background: #1E1A15; border: 1px solid #35454F; border-left: 3px solid #E0A040; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#E0A040" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 5v3.5M8 11h0.01"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Amendment queued for approval</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;">Ticket <span class="m" style="color: #9DAFBB;">100482</span> &middot; 2 fields &middot; A. Fenwick notified.</span>
+      </div>
+      <span class="cap" style="flex: none;">now</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#E0A040' }; }
+}
+</script>
+</body>
+</html>

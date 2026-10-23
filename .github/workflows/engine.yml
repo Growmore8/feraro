@@ -1,0 +1,64 @@
+name: engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: rustup component add clippy rustfmt
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('engine/**/Cargo.toml') }}
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+      # Invariant P0-1: no floating point may reach the trade path. A grep is a
+      # blunt instrument, but it catches the case clippy cannot — a float that
+      # arrives through a type alias or a macro. Comment lines are excluded,
+      # since the ADRs and module docs discuss f64 precisely to forbid it.
+      #
+      # The determinism guarantee is covered by the matrix above: both
+      # platforms run the same byte-comparison tests, so a divergence in the
+      # wire format or the journal fails the build on one OS and not the other.
+      - name: No floats in the engine
+        shell: bash
+        run: |
+          hits=$(grep -rnE '\bf(32|64)\b' crates/*/src --include='*.rs' \
+                 | grep -vE ':[0-9]+:[[:space:]]*(//|///|\*)' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::floating point found in the engine workspace"
+            exit 1
+          fi

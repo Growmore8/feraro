@@ -1,0 +1,538 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0E1418; color: #E4EBF0;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      font-size: 12px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    a { color: #E0A040; text-decoration: none; }
+    a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A; }
+    .ph { display: flex; align-items: center; justify-content: space-between; height: 26px; padding: 0 9px; border-bottom: 1px solid #26333B; background: #121A20; }
+    table { border-collapse: collapse; width: 100%; }
+    th { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: #677D8A; font-weight: 400; text-align: left; padding: 4px 9px; border-bottom: 1px solid #26333B; background: #121A20; }
+    td { padding: 4px 9px; border-bottom: 1px solid #1B252C; }
+    .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+    .sym { font-weight: 600; }
+    .up { color: #3FBF8F; } .dn { color: #E8635A; }
+    .bid { color: #4C9BE8; } .ask { color: #E8635A; } .dim { color: #677D8A; }
+    .tab { padding: 0 11px; height: 26px; display: flex; align-items: center; font-size: 11px; color: #9DAFBB; border-right: 1px solid #26333B; }
+    .tab-on { color: #E4EBF0; background: #1B252C; box-shadow: inset 0 -2px 0 0 currentColor; }
+    .pill { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; display: inline-block; }
+    .tbtn { width: 66px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 7px; }
+    .tbtn span { font-size: 10px; color: #9DAFBB; text-align: center; line-height: 1.2; }
+    .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .grpn { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5C68; padding-bottom: 3px; }
+    .dock { display: flex; gap: 5px; align-items: center; }
+    .dock i { width: 9px; height: 9px; display: block; border: 1px solid #4A5C68; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0E1418; position: relative; overflow: hidden;">
+
+  <!-- ══ Command bar ══ -->
+  <div style="height: 34px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: #121A20; border-bottom: 1px solid #1B252C;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="{{accent}}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 15.5 L7 9.5 L11 12 L17 4"></path><path d="M3 17.5 L17 17.5"></path>
+      </svg>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.02em;">FERARO</span>
+    </div>
+    <div style="display: flex; gap: 16px;">
+      <span style="font-size: 11px; color: #E4EBF0;">Home</span>
+      <span style="font-size: 11px; color: #9DAFBB;">View</span>
+      <span style="font-size: 11px; color: #9DAFBB;">Charts</span>
+      <span style="font-size: 11px; color: #9DAFBB;">Analysis</span>
+      <span style="font-size: 11px; color: #9DAFBB;">Scripts</span>
+      <span style="font-size: 11px; color: #9DAFBB;">Help</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 7px;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #3FBF8F; display: block;"></span>
+      <span class="m" style="font-size: 11px;">1001 &middot; USD &middot; 1:100</span>
+      <span class="cap">Live</span>
+    </div>
+  </div>
+
+  <!-- ══ Action toolbar, grouped ══ -->
+  <div style="height: 72px; flex: none; display: flex; align-items: stretch; padding: 0 8px; background: #151D23; border-bottom: 1px solid #26333B;">
+
+    <div class="grp">
+      <div style="display: flex;">
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4C9BE8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path><rect x="2.5" y="2.5" width="19" height="19"></rect></svg>
+          <span>New<br>position</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15"></rect><path d="M6 9h12M6 13h7"></path></svg>
+          <span>Entry<br>order</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E8635A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19"></rect><path d="M8 8l8 8M16 8l-8 8"></path></svg>
+          <span>Close<br>all</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h9l5 5v13H5z"></path><path d="M14 3v5h5M8 13h8M8 17h5"></path></svg>
+          <span>Statement</span>
+        </div>
+      </div>
+      <span class="grpn">Trade</span>
+    </div>
+
+    <div style="width: 1px; background: #26333B; margin: 8px 8px 20px;"></div>
+
+    <div class="grp">
+      <div style="display: flex;">
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3FBF8F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h11M10 8l4 4-4 4"></path><path d="M14 4h6v16h-6"></path></svg>
+          <span>Deposit</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 12H3M7 8l-4 4 4 4"></path><path d="M10 4h10v16H10"></path></svg>
+          <span>Withdraw</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13"></rect><path d="M2.5 10h19M6 15h4"></path></svg>
+          <span>Payment<br>methods</span>
+        </div>
+      </div>
+      <span class="grpn">Funds</span>
+    </div>
+
+    <div style="width: 1px; background: #26333B; margin: 8px 8px 20px;"></div>
+
+    <div class="grp">
+      <div style="display: flex;">
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18l5-7 4 3 8-10"></path><path d="M3 21h18"></path></svg>
+          <span>Indicators</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8"></rect><rect x="13" y="3" width="8" height="8"></rect><rect x="3" y="13" width="8" height="8"></rect><rect x="13" y="13" width="8" height="8"></rect></svg>
+          <span>Layout</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E0A040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a6 6 0 00-6 6v4l-2 3h16l-2-3v-4a6 6 0 00-6-6z"></path><path d="M10 20h4"></path></svg>
+          <span>Alerts</span>
+        </div>
+        <div class="tbtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9DAFBB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+          <span>Options</span>
+        </div>
+      </div>
+      <span class="grpn">Workspace</span>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <!-- Account strip -->
+    <div style="display: flex; align-items: center; gap: 20px; padding-right: 8px;">
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Balance</span><span class="m" style="font-size: 13px;">25,000.00</span></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Credit</span><span class="m" style="font-size: 13px; color: #B98CE0;">500.00</span></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Equity</span><span class="m" style="font-size: 13px;">25,159.00</span></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Margin</span><span class="m" style="font-size: 13px;">1,085.32</span></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Free margin</span><span class="m" style="font-size: 13px;">24,573.68</span></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="cap">Margin level</span><span class="m up" style="font-size: 13px; font-weight: 500;">2,318%</span></div>
+    </div>
+  </div>
+
+  <!-- ══ Docked body ══ -->
+  <div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 306px; gap: 1px; background: #26333B;">
+
+    <!-- ─ Left: chart over blotter ─ -->
+    <div style="display: flex; flex-direction: column; gap: 1px; background: #26333B; min-height: 0;">
+
+      <div style="background: #151D23; flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="ph">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <span style="font-size: 11px; color: {{accent}}; font-weight: 600;">EURUSD &middot; M5</span>
+            <span class="m dim" style="font-size: 10px;">O 1.08484 &nbsp; H 1.08546 &nbsp; L 1.08468 &nbsp; C 1.08532</span>
+          </div>
+          <div class="dock"><i></i><i></i></div>
+        </div>
+
+        <!-- timeframe + tools strip -->
+        <div style="height: 26px; flex: none; display: flex; align-items: center; gap: 0; border-bottom: 1px solid #26333B; background: #121A20; padding: 0 6px;">
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">M1</span>
+          <span class="m" style="padding: 2px 8px; font-size: 10px; background: {{accent}}; color: #0E1418; font-weight: 500;">M5</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">M15</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">M30</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">H1</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">H4</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">D1</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">W1</span>
+          <div style="width: 1px; height: 14px; background: #26333B; margin: 0 8px;"></div>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #9DAFBB;">Candles</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">Bars</span>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #677D8A;">Line</span>
+          <div style="width: 1px; height: 14px; background: #26333B; margin: 0 8px;"></div>
+          <span class="m" style="padding: 0 8px; font-size: 10px; color: #9DAFBB;">MACD (12, 26, 9)</span>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">Auto-scroll</span>
+        </div>
+
+        <!-- CHART: candles + MACD subchart -->
+        <div style="flex-grow: 1; min-height: 0;">
+          <svg viewBox="0 0 1100 540" width="100%" height="100%" preserveAspectRatio="none" role="img" aria-label="EURUSD five-minute candlesticks from 1.08380 to 1.08720 with a MACD subchart">
+            <g stroke="#1C262E" stroke-width="1" stroke-dasharray="2 4">
+              <line x1="6" y1="39.4" x2="1000" y2="39.4"></line>
+              <line x1="6" y1="97.6" x2="1000" y2="97.6"></line>
+              <line x1="6" y1="155.9" x2="1000" y2="155.9"></line>
+              <line x1="6" y1="214.1" x2="1000" y2="214.1"></line>
+              <line x1="6" y1="272.4" x2="1000" y2="272.4"></line>
+              <line x1="6" y1="330.6" x2="1000" y2="330.6"></line>
+            </g>
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A">
+              <text x="1008" y="43">1.08700</text><text x="1008" y="101">1.08640</text>
+              <text x="1008" y="159">1.08580</text><text x="1008" y="218">1.08520</text>
+              <text x="1008" y="276">1.08460</text><text x="1008" y="334">1.08400</text>
+            </g>
+
+            <g stroke-width="1.4">
+              <line x1="20" y1="268.5" x2="20" y2="285.9" stroke="#3FBF8F"></line><rect x="10" y="272.4" width="20" height="7.8" fill="#3FBF8F"></rect>
+              <line x1="53" y1="260.7" x2="53" y2="276.2" stroke="#3FBF8F"></line><rect x="43" y="264.6" width="20" height="7.8" fill="#3FBF8F"></rect>
+              <line x1="86" y1="256.8" x2="86" y2="272.4" stroke="#E8635A"></line><rect x="76" y="264.6" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="119" y1="262.6" x2="119" y2="278.2" stroke="#E8635A"></line><rect x="109" y="268.5" width="20" height="5.8" fill="#E8635A"></rect>
+              <line x1="152" y1="264.6" x2="152" y2="280.1" stroke="#3FBF8F"></line><rect x="142" y="266.5" width="20" height="7.8" fill="#3FBF8F"></rect>
+              <line x1="185" y1="252.9" x2="185" y2="268.5" stroke="#3FBF8F"></line><rect x="175" y="254.9" width="20" height="11.6" fill="#3FBF8F"></rect>
+              <line x1="218" y1="247.1" x2="218" y2="260.7" stroke="#E8635A"></line><rect x="208" y="254.9" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="251" y1="251" x2="251" y2="264.6" stroke="#3FBF8F"></line><rect x="241" y="252.9" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="284" y1="241.3" x2="284" y2="256.8" stroke="#3FBF8F"></line><rect x="274" y="243.2" width="20" height="9.7" fill="#3FBF8F"></rect>
+              <line x1="317" y1="235.5" x2="317" y2="249.1" stroke="#E8635A"></line><rect x="307" y="243.2" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="350" y1="239.4" x2="350" y2="254.9" stroke="#E8635A"></line><rect x="340" y="247.1" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="383" y1="243.2" x2="383" y2="256.8" stroke="#3FBF8F"></line><rect x="373" y="245.2" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="416" y1="231.6" x2="416" y2="247.1" stroke="#3FBF8F"></line><rect x="406" y="233.5" width="20" height="11.6" fill="#3FBF8F"></rect>
+              <line x1="449" y1="225.8" x2="449" y2="239.4" stroke="#E8635A"></line><rect x="439" y="233.5" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="482" y1="229.6" x2="482" y2="243.2" stroke="#3FBF8F"></line><rect x="472" y="231.6" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="515" y1="219.9" x2="515" y2="235.5" stroke="#3FBF8F"></line><rect x="505" y="221.9" width="20" height="9.7" fill="#3FBF8F"></rect>
+              <line x1="548" y1="214.1" x2="548" y2="227.7" stroke="#E8635A"></line><rect x="538" y="221.9" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="581" y1="218" x2="581" y2="231.6" stroke="#3FBF8F"></line><rect x="571" y="219.9" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="614" y1="208.3" x2="614" y2="223.8" stroke="#3FBF8F"></line><rect x="604" y="210.2" width="20" height="9.7" fill="#3FBF8F"></rect>
+              <line x1="647" y1="202.5" x2="647" y2="216" stroke="#E8635A"></line><rect x="637" y="210.2" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="680" y1="206.4" x2="680" y2="219.9" stroke="#3FBF8F"></line><rect x="670" y="208.3" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="713" y1="196.6" x2="713" y2="212.2" stroke="#3FBF8F"></line><rect x="703" y="198.6" width="20" height="9.7" fill="#3FBF8F"></rect>
+              <line x1="746" y1="190.8" x2="746" y2="204.4" stroke="#E8635A"></line><rect x="736" y="198.6" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="779" y1="194.7" x2="779" y2="208.3" stroke="#3FBF8F"></line><rect x="769" y="196.6" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="812" y1="186.9" x2="812" y2="200.5" stroke="#3FBF8F"></line><rect x="802" y="190.8" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="845" y1="183" x2="845" y2="196.6" stroke="#E8635A"></line><rect x="835" y="190.8" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="878" y1="186.9" x2="878" y2="202.5" stroke="#E8635A"></line><rect x="868" y="194.7" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="911" y1="190.8" x2="911" y2="204.4" stroke="#3FBF8F"></line><rect x="901" y="192.8" width="20" height="5.8" fill="#3FBF8F"></rect>
+              <line x1="944" y1="185" x2="944" y2="198.6" stroke="#E8635A"></line><rect x="934" y="192.8" width="20" height="3.9" fill="#E8635A"></rect>
+              <line x1="977" y1="188.9" x2="977" y2="204.4" stroke="#E8635A"></line><rect x="967" y="196.6" width="20" height="5.8" fill="#E8635A"></rect>
+            </g>
+
+            <!-- open position, stop and target -->
+            <line x1="6" y1="210.2" x2="1000" y2="210.2" stroke="#4C9BE8" stroke-width="1" stroke-dasharray="4 3"></line>
+            <rect x="6" y="201.2" width="112" height="18" fill="#16304A"></rect>
+            <text x="12" y="214" font-family="IBM Plex Mono, monospace" font-size="10" fill="#4C9BE8">BUY 1.00 @ 1.08484</text>
+
+            <line x1="6" y1="331" x2="1000" y2="331" stroke="#E8635A" stroke-width="1" stroke-dasharray="4 3"></line>
+            <rect x="6" y="322" width="86" height="18" fill="#3A2226"></rect>
+            <text x="12" y="335" font-family="IBM Plex Mono, monospace" font-size="10" fill="#E8635A">S/L 1.08200</text>
+
+            <line x1="6" y1="196.6" x2="1000" y2="196.6" stroke="#677D8A" stroke-width="1"></line>
+            <rect x="1000" y="187.6" width="70" height="18" fill="#E4EBF0"></rect>
+            <text x="1006" y="200.6" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" fill="#0E1418">1.08532</text>
+
+            <!-- separator -->
+            <line x1="0" y1="368" x2="1100" y2="368" stroke="#26333B" stroke-width="1"></line>
+            <text x="8" y="386" font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A">MACD (12, 26, 9) &nbsp; 0.00031</text>
+
+            <!-- MACD subchart, zero line at 460 -->
+            <line x1="6" y1="460" x2="1000" y2="460" stroke="#35454F" stroke-width="1"></line>
+            <g fill="#2E6FA8">
+              <rect x="10" y="460" width="20" height="18"></rect><rect x="43" y="460" width="20" height="15"></rect>
+              <rect x="76" y="460" width="20" height="16"></rect><rect x="109" y="460" width="20" height="12"></rect>
+              <rect x="142" y="460" width="20" height="9"></rect><rect x="175" y="460" width="20" height="4"></rect>
+              <rect x="208" y="460" width="20" height="6"></rect><rect x="241" y="460" width="20" height="3"></rect>
+              <rect x="274" y="458" width="20" height="2"></rect><rect x="307" y="456" width="20" height="4"></rect>
+              <rect x="340" y="458" width="20" height="2"></rect><rect x="373" y="455" width="20" height="5"></rect>
+              <rect x="406" y="451" width="20" height="9"></rect><rect x="439" y="453" width="20" height="7"></rect>
+              <rect x="472" y="451" width="20" height="9"></rect><rect x="505" y="447" width="20" height="13"></rect>
+              <rect x="538" y="449" width="20" height="11"></rect><rect x="571" y="447" width="20" height="13"></rect>
+              <rect x="604" y="443" width="20" height="17"></rect><rect x="637" y="445" width="20" height="15"></rect>
+              <rect x="670" y="444" width="20" height="16"></rect><rect x="703" y="440" width="20" height="20"></rect>
+              <rect x="736" y="443" width="20" height="17"></rect><rect x="769" y="442" width="20" height="18"></rect>
+              <rect x="802" y="440" width="20" height="20"></rect><rect x="835" y="443" width="20" height="17"></rect>
+              <rect x="868" y="446" width="20" height="14"></rect><rect x="901" y="445" width="20" height="15"></rect>
+              <rect x="934" y="448" width="20" height="12"></rect><rect x="967" y="451" width="20" height="9"></rect>
+            </g>
+            <polyline fill="none" stroke="#9DAFBB" stroke-width="1.4"
+              points="20,475 53,472 86,470 119,468 152,465 185,462 218,462 251,460 284,457 317,455 350,455 383,453 416,450 449,449 482,447 515,444 548,443 581,441 614,438 647,437 680,436 713,433 746,432 779,431 812,429 845,429 878,430 911,429 944,431 977,433"></polyline>
+            <polyline fill="none" stroke="#E0A040" stroke-width="1.4"
+              points="20,478 53,477 86,476 119,474 152,472 185,470 218,468 251,466 284,464 317,462 350,460 383,459 416,457 449,455 482,453 515,451 548,449 581,447 614,445 647,443 680,441 713,439 746,437 779,436 812,434 845,433 878,432 911,431 944,430 977,430"></polyline>
+
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A" text-anchor="middle">
+              <text x="20" y="530">09:15</text><text x="218" y="530">09:45</text><text x="416" y="530">10:15</text>
+              <text x="614" y="530">10:45</text><text x="812" y="530">11:15</text><text x="977" y="530">11:40</text>
+            </g>
+            <line x1="6" y1="512" x2="1000" y2="512" stroke="#26333B" stroke-width="1"></line>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ─ Blotter with the full tab set ─ -->
+      <div style="background: #151D23; flex: none; height: 238px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: stretch; border-bottom: 1px solid #26333B; background: #121A20;">
+          <div class="tab tab-on">Trade <span class="m dim" style="margin-left: 5px;">3</span></div>
+          <div class="tab">Net trade</div>
+          <div class="tab">Orders <span class="m dim" style="margin-left: 5px;">2</span></div>
+          <div class="tab">History</div>
+          <div class="tab">Journal</div>
+          <div class="tab">Mailbox <span class="m" style="margin-left: 5px; color: {{accent}};">1</span></div>
+          <div class="tab">News</div>
+          <div class="tab">Alerts</div>
+          <div style="flex-grow: 1; border-right: none;"></div>
+          <div style="display: flex; align-items: center; gap: 14px; padding: 0 12px;">
+            <span class="cap">Floating</span><span class="m up" style="font-size: 13px; font-weight: 500;">+159.00</span>
+          </div>
+        </div>
+
+        <div style="height: 26px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 10px; border-bottom: 1px solid #26333B;">
+          <span class="m" style="font-size: 10px; color: #E8635A; border: 1px solid #3A2226; padding: 2px 8px;">Close selected</span>
+          <span class="m" style="font-size: 10px; color: #9DAFBB; border: 1px solid #35454F; padding: 2px 8px;">Hedge selected</span>
+          <span class="m" style="font-size: 10px; color: #9DAFBB; border: 1px solid #35454F; padding: 2px 8px;">Modify</span>
+          <span class="m" style="font-size: 10px; color: #9DAFBB; border: 1px solid #35454F; padding: 2px 8px;">Cancel orders</span>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 24px;"></th><th style="width: 72px;">Ticket</th><th style="width: 116px;">Date / time</th>
+              <th>Type</th><th>Symbol</th><th class="n">Volume</th><th class="n">Open</th><th class="n">Current</th>
+              <th class="n">S/L</th><th class="n">T/P</th><th class="n">Comm</th><th class="n">Swap</th><th class="n">P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background: #1B252C;">
+              <td><span style="width: 9px; height: 9px; border: 1px solid #4A5C68; display: block;"></span></td>
+              <td class="m dim">100482</td><td class="m dim">03.09 09:41:12</td>
+              <td><span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span></td>
+              <td class="sym">EURUSD</td><td class="n">1.00</td><td class="n">1.08484</td><td class="n">1.08530</td>
+              <td class="n dim">1.08200</td><td class="n dim">1.09100</td><td class="n dim">&minus;7.00</td><td class="n dn">&minus;1.42</td><td class="n up">+46.00</td>
+            </tr>
+            <tr>
+              <td><span style="width: 9px; height: 9px; border: 1px solid #4A5C68; display: block;"></span></td>
+              <td class="m dim">100479</td><td class="m dim">03.09 09:12:48</td>
+              <td><span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span></td>
+              <td class="sym">XAUUSD</td><td class="n">0.50</td><td class="n">2374.10</td><td class="n">2378.44</td>
+              <td class="n dim">2362.00</td><td class="n dim">&mdash;</td><td class="n dim">&minus;5.00</td><td class="n dn">&minus;3.80</td><td class="n up">+217.00</td>
+            </tr>
+            <tr>
+              <td><span style="width: 9px; height: 9px; border: 1px solid #4A5C68; display: block;"></span></td>
+              <td class="m dim">100471</td><td class="m dim">02.09 17:03:55</td>
+              <td><span class="pill" style="background: #3A2226; color: #E8635A;">Sell</span></td>
+              <td class="sym">USDJPY</td><td class="n">0.30</td><td class="n">157.302</td><td class="n">157.486</td>
+              <td class="n dim">158.100</td><td class="n dim">156.400</td><td class="n dim">&minus;2.10</td><td class="n up">+0.94</td><td class="n dn">&minus;104.00</td>
+            </tr>
+            <tr style="border-top: 1px solid #26333B;">
+              <td></td><td class="m dim">100488</td><td class="m dim">03.09 11:20:04</td>
+              <td><span class="pill" style="background: #1F2A32; color: #9DAFBB;">Buy limit</span></td>
+              <td class="sym">GBPUSD</td><td class="n">2.00</td><td class="n">1.27100</td><td class="n dim">1.27412</td>
+              <td class="n dim">1.26800</td><td class="n dim">1.27900</td><td class="n dim">&mdash;</td><td class="n dim">&mdash;</td>
+              <td class="dim" style="text-align: right; font-family: 'IBM Plex Mono', monospace;">pending</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ─ Right dock: market watch over navigator ─ -->
+    <div style="display: flex; flex-direction: column; gap: 1px; background: #26333B; min-height: 0;">
+
+      <div style="background: #151D23; flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="ph"><span class="cap">Market watch</span><div class="dock"><i></i><i></i></div></div>
+        <div style="padding: 5px 9px; border-bottom: 1px solid #26333B; display: flex; align-items: center; gap: 7px;">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#677D8A" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 L14 14"></path></svg>
+          <span class="dim" style="font-size: 11px;">Search symbols</span>
+        </div>
+        <table>
+          <thead><tr><th style="width: 82px;">Symbol</th><th class="n">Bid</th><th class="n">Ask</th></tr></thead>
+          <tbody>
+            <tr style="background: #1B252C;"><td class="sym">EURUSD</td><td class="n bid">1.08530</td><td class="n ask">1.08532</td></tr>
+            <tr><td class="sym">GBPUSD</td><td class="n bid">1.27412</td><td class="n ask">1.27416</td></tr>
+            <tr><td class="sym">USDJPY</td><td class="n bid">157.482</td><td class="n ask">157.486</td></tr>
+            <tr><td class="sym">AUDUSD</td><td class="n bid">0.66218</td><td class="n ask">0.66222</td></tr>
+            <tr><td class="sym">NZDUSD</td><td class="n bid">0.61084</td><td class="n ask">0.61089</td></tr>
+            <tr><td class="sym">USDCHF</td><td class="n bid">0.88104</td><td class="n ask">0.88109</td></tr>
+            <tr><td class="sym">USDCAD</td><td class="n bid">1.36740</td><td class="n ask">1.36745</td></tr>
+            <tr><td class="sym">EURGBP</td><td class="n bid">0.85178</td><td class="n ask">0.85183</td></tr>
+            <tr><td class="sym">EURJPY</td><td class="n bid">170.918</td><td class="n ask">170.926</td></tr>
+            <tr><td class="sym">CHFJPY</td><td class="n bid">178.744</td><td class="n ask">178.760</td></tr>
+            <tr><td class="sym">XAUUSD</td><td class="n bid">2378.44</td><td class="n ask">2378.72</td></tr>
+            <tr><td class="sym">XAGUSD</td><td class="n bid">30.185</td><td class="n ask">30.212</td></tr>
+            <tr><td class="sym">US500</td><td class="n bid">5487.2</td><td class="n ask">5487.8</td></tr>
+            <tr><td class="sym">GER40</td><td class="n bid">18412.5</td><td class="n ask">18414.0</td></tr>
+            <tr><td class="sym">USOIL</td><td class="n bid">78.42</td><td class="n ask">78.46</td></tr>
+            <tr><td class="sym">BTCUSD</td><td class="n bid">64250.75</td><td class="n ask">64258.20</td></tr>
+          </tbody>
+        </table>
+        <div style="display: flex; border-top: 1px solid #26333B; background: #121A20;">
+          <div class="tab tab-on" style="height: 24px;">Symbols</div>
+          <div class="tab" style="height: 24px;">Ticks</div>
+          <div class="tab" style="height: 24px;">Depth</div>
+        </div>
+      </div>
+
+      <div style="background: #151D23; flex: none; height: 244px; display: flex; flex-direction: column;">
+        <div class="ph"><span class="cap">Navigator</span><div class="dock"><i></i><i></i></div></div>
+        <div style="padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; font-size: 11px;">
+          <div style="display: flex; align-items: center; gap: 7px; color: #E4EBF0;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#677D8A" stroke-width="1.4"><path d="M2 4 L6 8 L10 4"></path></svg>
+            <span style="font-weight: 600;">Feraro Live</span>
+          </div>
+          <div style="padding-left: 18px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 7px; color: {{accent}};">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6" cy="4.5" r="2"></circle><path d="M2 10c0-2 1.8-3 4-3s4 1 4 3"></path></svg>
+              <span class="m">1001 &middot; USD &middot; Live</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 7px; color: #9DAFBB;">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6" cy="4.5" r="2"></circle><path d="M2 10c0-2 1.8-3 4-3s4 1 4 3"></path></svg>
+              <span class="m">7742 &middot; USD &middot; Demo</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px; color: #9DAFBB;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#677D8A" stroke-width="1.4"><path d="M4 2 L8 6 L4 10"></path></svg>
+            <span>Indicators</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px; color: #9DAFBB;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#677D8A" stroke-width="1.4"><path d="M4 2 L8 6 L4 10"></path></svg>
+            <span>Scripts &middot; client side</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px; color: #9DAFBB;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#677D8A" stroke-width="1.4"><path d="M4 2 L8 6 L4 10"></path></svg>
+            <span>Scripts &middot; server side</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px; color: #9DAFBB;">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#677D8A" stroke-width="1.4"><path d="M4 2 L8 6 L4 10"></path></svg>
+            <span>Expert advisors</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="display: flex; border-top: 1px solid #26333B; background: #121A20;">
+          <div class="tab tab-on" style="height: 24px;">Navigator</div>
+          <div class="tab" style="height: 24px;">Data window</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Status bar ══ -->
+  <div style="height: 26px; flex: none; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: #121A20; border-top: 1px solid #26333B;">
+    <span class="cap">03.09.2026 11:42:07 UTC</span>
+    <span class="m dim" style="font-size: 10px;">O 1.08484 &nbsp; H 1.08546 &nbsp; L 1.08468 &nbsp; C 1.08532</span>
+    <div style="flex-grow: 1;"></div>
+    <span class="cap">Journal seq <span style="color: #9DAFBB;">4,182,097</span></span>
+    <span class="cap">Quote age <span style="color: #9DAFBB;">18 ms</span></span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #3FBF8F; display: block;"></span>
+      <span class="cap" style="color: #3FBF8F;">Connected &middot; 12 / 4 KB</span>
+    </div>
+  </div>
+
+  <!-- ══ New position dialog ══ -->
+  <div style="position: absolute; left: 372px; top: 232px; width: 336px; background: #151D23; border: 1px solid #35454F; box-shadow: 0 18px 48px rgba(0,0,0,0.62);">
+    <div style="height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 11px; background: #1B252C; border-bottom: 1px solid #35454F;">
+      <span style="font-size: 11px; font-weight: 600;">New position &middot; EURUSD</span>
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#9DAFBB" stroke-width="1.5"><path d="M2 2l8 8M10 2l-8 8"></path></svg>
+    </div>
+    <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+        <div style="height: 54px; border: 1px solid #E8635A; background: #24161A; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span class="cap" style="color: #E8635A;">Sell</span>
+          <span class="m ask" style="font-size: 18px; font-weight: 500;">1.08530</span>
+        </div>
+        <div style="height: 54px; border: 1px solid #4C9BE8; background: #12212F; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span class="cap" style="color: #4C9BE8;">Buy</span>
+          <span class="m bid" style="font-size: 18px; font-weight: 500;">1.08532</span>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">Volume</span>
+          <div class="m" style="height: 30px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 9px; font-size: 13px;">1.00</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">Type</span>
+          <div style="height: 30px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 9px; font-size: 11px;">Market</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">TIF</span>
+          <div style="height: 30px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 9px; font-size: 11px;">IOC</div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">Stop loss</span>
+          <div class="m" style="height: 30px; border: 1px solid #26333B; background: #0E1418; display: flex; align-items: center; padding: 0 9px; color: #677D8A;">1.08200</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">Take profit</span>
+          <div class="m" style="height: 30px; border: 1px solid #26333B; background: #0E1418; display: flex; align-items: center; padding: 0 9px; color: #677D8A;">1.09100</div>
+        </div>
+      </div>
+      <div style="border: 1px solid #26333B; background: #121A20; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between;"><span class="cap">Margin required</span><span class="m" style="font-size: 11px;">1,085.32 USD</span></div>
+        <div style="display: flex; justify-content: space-between;"><span class="cap">Commission</span><span class="m" style="font-size: 11px;">7.00 USD</span></div>
+        <div style="display: flex; justify-content: space-between;"><span class="cap">Margin level after</span><span class="m up" style="font-size: 11px;">1,159%</span></div>
+      </div>
+      <div style="height: 38px; background: {{accent}}; display: flex; align-items: center; justify-content: center;">
+        <span style="font-size: 13px; font-weight: 600; color: #0E1418;">Buy 1.00 EURUSD at market</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Toasts ══ -->
+  <div style="position: absolute; right: 18px; top: 122px; width: 320px; display: flex; flex-direction: column; gap: 8px;">
+
+    <div style="background: #18242B; border: 1px solid #35454F; border-left: 3px solid #3FBF8F; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#3FBF8F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M3 8.5 L6.5 12 L13 4"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Order filled</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;">Bought 1.00 EURUSD at <span class="m" style="color: #9DAFBB;">1.08532</span> &middot; ticket <span class="m" style="color: #9DAFBB;">100482</span></span>
+      </div>
+      <span class="cap" style="flex: none;">now</span>
+    </div>
+
+    <div style="background: #1E1A15; border: 1px solid #35454F; border-left: 3px solid #E0A040; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#E0A040" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><path d="M8 2 L15 14 H1 Z"></path><path d="M8 6.5v3.5M8 12h0.01"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Margin level 94%</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;">Below the 100% call level. Add funds or reduce exposure before it reaches 50%.</span>
+        <span class="m" style="font-size: 10px; color: {{accent}};">Deposit funds &rarr;</span>
+      </div>
+      <span class="cap" style="flex: none;">2m</span>
+    </div>
+
+    <div style="background: #16202A; border: 1px solid #35454F; border-left: 3px solid #4C9BE8; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#4C9BE8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M2 8h8M7 5l3 3-3 3"></path><path d="M10 3h4v10h-4"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Deposit credited</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;"><span class="m" style="color: #9DAFBB;">5,000.00 USD</span> cleared &middot; reference <span class="m" style="color: #9DAFBB;">DEP-88412</span></span>
+      </div>
+      <span class="cap" style="flex: none;">14m</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#E0A040' };
+  }
+}
+</script>
+</body>
+</html>

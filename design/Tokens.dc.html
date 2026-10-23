@@ -1,0 +1,286 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0E1418; color: #E4EBF0;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      font-size: 12px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    }
+    a { color: #E0A040; text-decoration: none; }
+    a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A;
+    }
+    .sect {
+      font-family: "IBM Plex Sans Condensed", sans-serif;
+      font-size: 15px; font-weight: 600; letter-spacing: 0.01em;
+      padding-bottom: 7px; border-bottom: 1px solid #35454F;
+    }
+    .sw { display: flex; flex-direction: column; gap: 5px; }
+    .chip { height: 44px; border: 1px solid #26333B; }
+    .role { font-size: 11px; color: #E4EBF0; }
+    .hex { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; color: #677D8A; }
+    .note { font-size: 11.5px; color: #9DAFBB; line-height: 1.55; max-width: 62ch; }
+    .pill {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 2px; display: inline-block;
+    }
+  </style>
+</helmet>
+
+<div style="width: 900px; min-height: 940px; background: #0E1418; padding: 30px 34px 36px; display: flex; flex-direction: column; gap: 26px;">
+
+  <!-- Masthead -->
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2px solid #E4EBF0; padding-bottom: 14px;">
+    <div style="display: flex; flex-direction: column; gap: 5px;">
+      <span class="cap">Feraro &middot; terminal design system</span>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 30px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.05;">Tokens &amp; density</span>
+    </div>
+    <span class="cap">Rev 1 &middot; Sep 2026</span>
+  </div>
+
+  <!-- Surfaces -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Surfaces and ink</div>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;">
+      <div class="sw"><div class="chip" style="background: #0E1418;"></div><span class="role">Ground</span><span class="hex">#0E1418</span></div>
+      <div class="sw"><div class="chip" style="background: #121A20;"></div><span class="role">Chrome</span><span class="hex">#121A20</span></div>
+      <div class="sw"><div class="chip" style="background: #151D23;"></div><span class="role">Panel</span><span class="hex">#151D23</span></div>
+      <div class="sw"><div class="chip" style="background: #1B252C;"></div><span class="role">Row active</span><span class="hex">#1B252C</span></div>
+      <div class="sw"><div class="chip" style="background: #26333B;"></div><span class="role">Rule</span><span class="hex">#26333B</span></div>
+      <div class="sw"><div class="chip" style="background: #35454F;"></div><span class="role">Rule strong</span><span class="hex">#35454F</span></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;">
+      <div class="sw"><div class="chip" style="background: #E4EBF0;"></div><span class="role">Ink</span><span class="hex">#E4EBF0</span></div>
+      <div class="sw"><div class="chip" style="background: #9DAFBB;"></div><span class="role">Ink 2</span><span class="hex">#9DAFBB</span></div>
+      <div class="sw"><div class="chip" style="background: #677D8A;"></div><span class="role">Ink 3 &middot; labels</span><span class="hex">#677D8A</span></div>
+      <div class="sw"><div class="chip" style="background: {{accent}};"></div><span class="role">Accent</span><span class="hex">{{accent}}</span></div>
+      <div class="sw"><div class="chip" style="background: #2A2118;"></div><span class="role">Accent wash</span><span class="hex">#2A2118</span></div>
+      <div class="sw"><div class="chip" style="background: #1F2A32;"></div><span class="role">Track</span><span class="hex">#1F2A32</span></div>
+    </div>
+    <p class="note" style="margin: 0;">The ground is a cool slate, not black. A true <span class="m">#000</span> panel next to a <span class="m">#151D23</span> one reads as a hole rather than a surface, and on the OLED monitors dealers actually use it smears on scroll.</p>
+  </div>
+
+  <!-- Semantics -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Semantic colour &mdash; and the one rule that matters</div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+      <div class="sw"><div class="chip" style="background: #4C9BE8;"></div><span class="role">Buy &middot; bid</span><span class="hex">#4C9BE8</span></div>
+      <div class="sw"><div class="chip" style="background: #E8635A;"></div><span class="role">Sell &middot; ask &middot; loss</span><span class="hex">#E8635A</span></div>
+      <div class="sw"><div class="chip" style="background: #3FBF8F;"></div><span class="role">Profit &middot; healthy</span><span class="hex">#3FBF8F</span></div>
+      <div class="sw"><div class="chip" style="background: #E0A040;"></div><span class="role">Warning</span><span class="hex">#E0A040</span></div>
+      <div class="sw"><div class="chip" style="background: #B98CE0;"></div><span class="role">Reserved</span><span class="hex">#B98CE0</span></div>
+    </div>
+    <p class="note" style="margin: 0;"><strong style="color: #E4EBF0;">Accent is never a data colour.</strong> Amber marks the thing you can act on &mdash; the primary button, the live tab, the focus ring. It never encodes a price, a side or a P&amp;L. Dealers read colour faster than they read digits, so a hue that sometimes means &ldquo;buy&rdquo; and sometimes means &ldquo;click me&rdquo; costs real money. Buy is blue and sell is red because that is the convention every FX trader already has in their hands; profit is green and loss is red because that is a different question from which way the order faced.</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span>
+      <span class="pill" style="background: #3A2226; color: #E8635A;">Sell</span>
+      <span class="pill" style="background: #122C23; color: #3FBF8F;">Enabled</span>
+      <span class="pill" style="background: #2E2513; color: #E0A040;">Watch</span>
+      <span class="pill" style="background: #301A17; color: #E8635A;">Breach</span>
+      <span class="pill" style="background: #1F2A32; color: #677D8A;">Disabled</span>
+      <span class="pill" style="background: #2A2118; color: #E0A040;">B &middot; internal</span>
+      <span class="pill" style="background: #16304A; color: #4C9BE8;">A &middot; STP</span>
+    </div>
+  </div>
+
+  <!-- Type -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Type &mdash; three roles, one family</div>
+    <div style="display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 14px 18px; align-items: baseline;">
+      <span class="cap">Plex Sans Cond 600</span>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 26px; font-weight: 600;">EURUSD &middot; Net exposure</span>
+
+      <span class="cap">Plex Sans 400 / 600</span>
+      <span style="font-size: 14px;">Interface text, labels and prose. Semibold for a symbol, regular for everything else.</span>
+
+      <span class="cap">Plex Mono &middot; tabular</span>
+      <span class="m" style="font-size: 20px; font-weight: 500;">1.08532 &nbsp; 25,159.00 &nbsp; &minus;104.00 &nbsp; 2,318%</span>
+
+      <span class="cap">Caption &middot; mono 9/0.13em</span>
+      <span class="cap">Margin level &middot; free margin &middot; journal seq</span>
+    </div>
+    <p class="note" style="margin: 0;">Every digit a trader compares down a column is <span class="m">IBM Plex Mono</span> with <span class="m">font-variant-numeric: tabular-nums</span>. Proportional figures make a price column ripple as it ticks, and a rippling column is one a dealer stops trusting. Condensed carries headings because it buys width back in a layout with no width to spare.</p>
+  </div>
+
+  <!-- Density -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Density</div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: #26333B; border: 1px solid #26333B;">
+      <div style="background: #151D23; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px;">
+        <span class="cap">Table row</span><span class="m" style="font-size: 17px;">26 px</span><span class="hex">6px vertical padding</span>
+      </div>
+      <div style="background: #151D23; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px;">
+        <span class="cap">Panel header</span><span class="m" style="font-size: 17px;">30 px</span><span class="hex">Mono caption, left</span>
+      </div>
+      <div style="background: #151D23; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px;">
+        <span class="cap">Field / control</span><span class="m" style="font-size: 17px;">30 px</span><span class="hex">Desktop</span>
+      </div>
+      <div style="background: #151D23; padding: 11px 13px; display: flex; flex-direction: column; gap: 3px;">
+        <span class="cap">Touch target</span><span class="m" style="font-size: 17px;">44 px</span><span class="hex">Mobile floor</span>
+      </div>
+    </div>
+    <p class="note" style="margin: 0;">Desktop controls run to 30px because a dealer works with a mouse on a 27-inch screen and wants rows, not air. Mobile never goes below 44px. The two are different products sharing a palette, not one layout stretched.</p>
+  </div>
+
+  <!-- Controls -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Controls</div>
+    <div style="display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap;">
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Primary</span>
+        <div style="height: 34px; padding: 0 16px; background: {{accent}}; display: flex; align-items: center; justify-content: center;">
+          <span style="font-size: 12px; font-weight: 600; color: #0E1418;">Commit change</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Secondary</span>
+        <div style="height: 34px; padding: 0 16px; border: 1px solid #35454F; display: flex; align-items: center; justify-content: center;">
+          <span class="m" style="font-size: 11px; color: #9DAFBB;">Discard</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Destructive</span>
+        <div style="height: 34px; padding: 0 16px; border: 1px solid #E8635A; display: flex; align-items: center; justify-content: center;">
+          <span class="m" style="font-size: 11px; color: #E8635A;">Force close</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Field</span>
+        <div style="height: 34px; width: 148px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 10px;">
+          <span class="m" style="font-size: 13px;">1.08532</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Read only</span>
+        <div style="height: 34px; width: 100px; border: 1px solid #26333B; background: #0E1418; display: flex; align-items: center; padding: 0 10px;">
+          <span class="m" style="font-size: 13px; color: #677D8A;">EUR</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="cap">Side pair</span>
+        <div style="display: flex; gap: 6px;">
+          <div style="height: 34px; padding: 0 14px; border: 1px solid #E8635A; background: #24161A; display: flex; align-items: center;">
+            <span class="m" style="font-size: 13px; color: #E8635A;">1.08530</span>
+          </div>
+          <div style="height: 34px; padding: 0 14px; border: 1px solid #4C9BE8; background: #12212F; display: flex; align-items: center;">
+            <span class="m" style="font-size: 13px; color: #4C9BE8;">1.08532</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reject reasons, straight from the engine -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Rejection copy</div>
+    <p class="note" style="margin: 0;">The engine's <span class="m">RejectReason</span> variants are enum values, not sentences. Each maps to one line of trader-facing copy that says what happened and what to do &mdash; never the variant name, never an error code alone.</p>
+    <div style="display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 8px 18px; align-items: baseline;">
+      <span class="m" style="font-size: 11px; color: #E0A040;">InsufficientMargin</span>
+      <span style="font-size: 11.5px;">Not enough free margin for 1.00 lot. You have 24,073.68 &mdash; this order needs 1,085.32 more.</span>
+      <span class="m" style="font-size: 11px; color: #E0A040;">MarketClosed</span>
+      <span style="font-size: 11.5px;">EURUSD is closed until Sunday 22:00 UTC.</span>
+      <span class="m" style="font-size: 11px; color: #E0A040;">InvalidQuantity</span>
+      <span style="font-size: 11.5px;">Volume must be between 0.01 and 50.00, in steps of 0.01.</span>
+      <span class="m" style="font-size: 11px; color: #E0A040;">CouldNotFillInFull</span>
+      <span style="font-size: 11.5px;">Only 2.50 lots were available at your price. Fill-or-kill cancelled the order.</span>
+      <span class="m" style="font-size: 11px; color: #E0A040;">AccountNotTradeable</span>
+      <span style="font-size: 11.5px;">This account is read-only. Contact support to re-enable trading.</span>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Toast notifications</div>
+    <p class="note" style="margin: 0;">Four severities, one shape: a 3px severity stripe, an icon, a bold line saying what happened, a detail line carrying the numbers, and an age. Anything the trader must act on gets one action link and nothing else. Fills and deposits auto-dismiss after six seconds; margin calls and rejections stay until dismissed, because a trader who missed one has a real problem.</p>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+
+      <div style="background: #18242B; border: 1px solid #35454F; border-left: 3px solid #3FBF8F; padding: 10px 12px; display: flex; gap: 10px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#3FBF8F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M3 8.5 L6.5 12 L13 4"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <span style="font-size: 12px; font-weight: 600;">Order filled</span>
+          <span style="font-size: 11px; line-height: 1.45; color: #9DAFBB;">Bought 1.00 EURUSD at <span class="m">1.08532</span></span>
+        </div>
+        <span class="cap" style="flex: none;">6 s</span>
+      </div>
+
+      <div style="background: #16202A; border: 1px solid #35454F; border-left: 3px solid #4C9BE8; padding: 10px 12px; display: flex; gap: 10px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#4C9BE8" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 7.5v4M8 5h0.01"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <span style="font-size: 12px; font-weight: 600;">Deposit credited</span>
+          <span style="font-size: 11px; line-height: 1.45; color: #9DAFBB;"><span class="m">5,000.00 USD</span> cleared</span>
+        </div>
+        <span class="cap" style="flex: none;">6 s</span>
+      </div>
+
+      <div style="background: #1E1A15; border: 1px solid #35454F; border-left: 3px solid #E0A040; padding: 10px 12px; display: flex; gap: 10px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#E0A040" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><path d="M8 2 L15 14 H1 Z"></path><path d="M8 6.5v3.5M8 12h0.01"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1;">
+          <span style="font-size: 12px; font-weight: 600;">Margin level 94%</span>
+          <span style="font-size: 11px; line-height: 1.45; color: #9DAFBB;">Below the 100% call level.</span>
+          <span class="m" style="font-size: 10px; color: {{accent}};">Deposit funds &rarr;</span>
+        </div>
+        <span class="cap" style="flex: none;">stays</span>
+      </div>
+
+      <div style="background: #1F1618; border: 1px solid #35454F; border-left: 3px solid #E8635A; padding: 10px 12px; display: flex; gap: 10px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#E8635A" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><path d="M3 3l10 10M13 3L3 13"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <span style="font-size: 12px; font-weight: 600;">Order rejected</span>
+          <span style="font-size: 11px; line-height: 1.45; color: #9DAFBB;">Not enough free margin &mdash; needs <span class="m">1,085.32</span> more.</span>
+        </div>
+        <span class="cap" style="flex: none;">stays</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Money operations -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">Four money operations, never blurred together</div>
+    <div style="display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 8px 18px; align-items: baseline;">
+      <span class="pill" style="background: #122C23; color: #3FBF8F;">Deposit</span>
+      <span style="font-size: 11.5px;">Real money in. Increases balance and withdrawable funds.</span>
+      <span class="pill" style="background: #1F2A32; color: #9DAFBB;">Withdrawal</span>
+      <span style="font-size: 11.5px;">Real money out. Blocked when it would push margin level below stop-out.</span>
+      <span class="pill" style="background: #2A2118; color: #E0A040;">Credit</span>
+      <span style="font-size: 11.5px;">Bonus. Counts toward margin, <strong style="color: #E4EBF0;">cannot be withdrawn</strong>, and is removed on the first withdrawal. Shown as its own line beside balance, never folded into it.</span>
+      <span class="pill" style="background: #301A17; color: #E8635A;">Debit</span>
+      <span style="font-size: 11.5px;">Correction out. Always carries a reason that reaches the client statement.</span>
+    </div>
+  </div>
+
+  <!-- Buy / sell convention -->
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div class="sect">One convention to settle before build</div>
+    <p class="note" style="margin: 0;">This system uses <strong style="color: #4C9BE8;">buy = blue</strong> and <strong style="color: #E8635A;">sell = red</strong>, which is what MT4 trained most of the market on. Some platforms run it the other way round. It is a single token pair, so it can be flipped globally or made a per-trader preference &mdash; what it must never be is inconsistent between the desktop, mobile and dealer screens.</p>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#E0A040' };
+  }
+}
+</script>
+</body>
+</html>

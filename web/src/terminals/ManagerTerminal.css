@@ -1,0 +1,1030 @@
+/* The manager's terminal.
+   Four regions in one grid: clients left, chart centre, prices right, toolbox
+   across the bottom. The same tokens and the same density as the client
+   terminal, because it is one platform with two screens. */
+
+.manager {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  overflow: hidden;
+}
+
+.mgr-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-mark {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.mgr-plain {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.mgr-plain:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.mgr-pill {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--profit);
+  border: 1px solid currentColor;
+}
+
+/* The house totals, in the command bar: always true, never the subject of an
+   action, so they sit above the screen rather than inside it. */
+.mgr-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 8px;
+  border-left: 1px solid var(--rule);
+}
+
+.mgr-figure .mono {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mgr-result {
+  flex: none;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 11px;
+  background: var(--profit-wash);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-result.bad {
+  background: var(--danger-wash);
+}
+
+/* Flex, not grid, because any of the four panes may simply not be rendered.
+   A grid with conditional areas has to name every arrangement; nested flex
+   boxes just close up. */
+.mgr-body {
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--rule);
+}
+
+/* navigator | chart | market watch */
+.mgr-upper {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.mgr-clients {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.mgr-chart {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.mgr-watch {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.mgr-watch-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mgr-toolbox {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+}
+
+/* The × on a pane's own header. Hiding a pane is the pane's business, so the
+   control lives on it as well as in the View menu. */
+.pane-shut {
+  margin-left: auto;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.pane-shut:hover {
+  color: var(--loss);
+}
+
+/* The View menu. */
+.mgr-view {
+  position: relative;
+}
+
+.mgr-view-catch {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.mgr-view-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 41;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 30%);
+}
+
+.mgr-view-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mgr-view-row:hover {
+  background: var(--chrome);
+}
+
+.mgr-view-reset {
+  width: 100%;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mgr-view-reset:hover {
+  color: var(--ink);
+  background: var(--chrome);
+}
+
+.mgr-hint {
+  padding-right: 8px;
+  font-size: 10px;
+}
+
+/* ── The client tree ── */
+
+.mgr-tree {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+
+.mgr-client {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px 2px;
+  border-top: 1px solid var(--rule);
+}
+
+.mgr-client:first-child {
+  border-top: none;
+}
+
+.mgr-client-name {
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgr-kyc {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.kyc-approved {
+  color: var(--profit);
+}
+
+.kyc-submitted {
+  color: var(--warn);
+}
+
+.kyc-rejected {
+  color: var(--loss);
+}
+
+.mgr-group {
+  padding: 2px 8px 1px 14px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.mgr-acct {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 20px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mgr-acct:hover {
+  background: var(--accent-wash);
+}
+
+.mgr-acct.on {
+  background: var(--row-active);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.mgr-acct-eq {
+  margin-left: auto;
+  color: var(--ink-2);
+}
+
+.mgr-empty {
+  padding: 10px 8px;
+  font-size: 11px;
+}
+
+.mgr-add {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-top: 1px solid var(--rule);
+}
+
+/* ── Controls ── */
+
+.mgr-input {
+  height: 24px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+}
+
+.mgr-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mgr-go,
+.mgr-mini {
+  height: 24px;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid var(--rule-strong);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mgr-go {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.mgr-mini:hover {
+  background: var(--accent-wash);
+}
+
+.mgr-mini.bad {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.mgr-go:disabled {
+  color: var(--ink-4);
+  background: var(--track);
+  border-color: var(--rule);
+  cursor: default;
+}
+
+.mgr-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+/* ── Toolbox ── */
+
+.mgr-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+.mgr-actions .mgr-input {
+  width: 84px;
+}
+
+.mgr-pane {
+  flex-grow: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mgr-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 1px;
+  background: var(--rule);
+  min-height: 100%;
+}
+
+.mgr-trial {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel);
+}
+
+.mgr-amend {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--chrome);
+  border-top: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.mgr-amend .mgr-input {
+  width: 110px;
+}
+
+.mgr-amend .mgr-note {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.manager .warn {
+  color: var(--warn);
+}
+
+.manager .credit {
+  color: var(--credit);
+}
+
+/* ── Narrow screens: one column, chart first, tree as a strip ──
+   A manager on a tablet is checking on things rather than working all day,
+   so the same regions stack rather than disappear. */
+
+@media (max-width: 1100px) {
+  .mgr-body {
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(200px, 40%);
+    grid-template-areas:
+      'clients chart'
+      'clients toolbox';
+  }
+
+  .mgr-watch {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .manager {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .mgr-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      'clients'
+      'chart'
+      'toolbox';
+  }
+
+  .mgr-figures {
+    flex-wrap: wrap;
+  }
+
+  .mgr-figure {
+    min-width: 45%;
+  }
+
+  .mgr-chart {
+    height: 44vh;
+  }
+
+  .mgr-tree {
+    max-height: 32vh;
+  }
+
+  .table tbody td {
+    height: 32px;
+  }
+}
+
+
+/* ── The navigator's two sides ──
+   Live first: it is the one where a mistake costs somebody money. */
+
+.mgr-sides {
+  flex: none;
+  display: flex;
+  gap: 1px;
+  background: var(--rule);
+}
+
+.mgr-sides button {
+  flex: 1;
+  padding: 5px 4px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: var(--chrome);
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.mgr-sides button:hover {
+  color: var(--ink);
+}
+
+.mgr-sides button.on {
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom-color: var(--accent);
+}
+
+.mgr-find-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-find-row .cap {
+  flex: none;
+}
+
+.mgr-find {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+}
+
+.mgr-find:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── An account in the navigator ── */
+
+.mgr-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+
+.dot-ok {
+  background: var(--profit);
+}
+
+.dot-warn {
+  background: var(--warn);
+}
+
+.dot-bad {
+  background: var(--loss);
+}
+
+.mgr-acct-id {
+  flex: none;
+  font-size: 11px;
+}
+
+.mgr-acct-who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: var(--ink-3);
+}
+
+/* ── Open symbols, above the chart ── */
+
+.mgr-symtabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 6px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.symtab {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+}
+
+.symtab.on {
+  border-bottom-color: var(--accent);
+  background: var(--panel);
+}
+
+.symtab-pick,
+.symtab-shut {
+  padding: 5px 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.symtab-pick {
+  padding-left: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.symtab.on .symtab-pick {
+  color: var(--ink);
+}
+
+.symtab-shut {
+  padding-right: 7px;
+  color: var(--ink-4);
+}
+
+.symtab-shut:hover {
+  color: var(--loss);
+}
+
+.symtab-hint {
+  padding-left: 10px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* The chart and the ticket that floats over it. */
+.mgr-chart-area {
+  position: relative;
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── The status strip ──
+   Amber, because it qualifies everything above it: the figures here belong to
+   one account, and reading them as the house's would be the expensive
+   mistake. */
+
+.mgr-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--warn);
+  background: var(--chrome);
+}
+
+.mgr-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.mgr-stat .cap {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.mgr-stat .mono {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mgr-sep {
+  color: var(--ink-4);
+}
+
+/* ── Narrow ── */
+
+@media (max-width: 1100px) {
+  /* The market watch is the pane that gives way first: the chart carries the
+     price, and the navigator is how the desk gets anywhere. It can be put
+     back from the View menu. */
+  .mgr-watch,
+  .mgr-watch + .split {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .mgr-status {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+}
+
+
+/* An account in the navigator reads as one line, plus — for an
+   administrator, who is the one asking — whose book it sits in. */
+
+.mgr-acct {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.mgr-acct-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.mgr-acct-book {
+  padding-left: 12px;
+  font-size: 9px;
+  text-align: left;
+  color: var(--ink-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ── The navigator tree ──
+   Indented by depth, with the twisty and the label as one target: a folder
+   you can only open by hitting a nine-pixel triangle is a folder nobody
+   opens. */
+
+.mgr-branch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 8px 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mgr-branch:hover {
+  background: var(--chrome);
+}
+
+.mgr-twisty {
+  flex: none;
+  width: 9px;
+  font-size: 8px;
+  color: var(--ink-4);
+}
+
+.mgr-branch-icon {
+  flex: none;
+  width: 11px;
+  font-size: 9px;
+  color: var(--ink-4);
+}
+
+.mgr-branch-root {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mgr-branch-root .mgr-branch-icon {
+  color: var(--brand);
+}
+
+.mgr-branch-star .mgr-branch-icon {
+  color: var(--brand-gold);
+}
+
+.mgr-branch-manager .mgr-branch-icon {
+  color: var(--accent);
+}
+
+.mgr-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgr-branch-count {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 9px;
+  color: var(--ink-4);
+}
+
+/* Live / Demo inside a manager's folder. */
+.mgr-leafhead {
+  padding: 2px 8px 1px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* The pin. Dim until it is set, so a list of unpinned accounts is quiet. */
+.mgr-star {
+  flex: none;
+  padding: 0 1px;
+  font-size: 10px;
+  color: var(--ink-4);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mgr-acct:hover .mgr-star,
+.mgr-star.on {
+  opacity: 1;
+}
+
+.mgr-star.on {
+  color: var(--brand-gold);
+}
+
+/* ── Tabs at the foot of a pane ──
+   Where both reference platforms put them: the pane's contents are the
+   subject, and the tabs are how you change it, so they read last. */
+
+.mgr-foot-tabs,
+.blotter-tabs-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--chrome);
+  border-top: 1px solid var(--rule);
+}
+
+.mgr-foot-tabs button {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  cursor: pointer;
+}
+
+.mgr-foot-tabs button:hover {
+  color: var(--ink);
+}
+
+.mgr-foot-tabs button.on {
+  color: var(--ink);
+  background: var(--panel);
+  border-top-color: var(--accent);
+}
+
+/* The blotter's own tabs, now underneath it. */
+.blotter-tabs-foot {
+  border-top: 1px solid var(--rule);
+  border-bottom: none;
+}
+
+.blotter-tabs-foot button {
+  border-bottom: none;
+  border-top: 2px solid transparent;
+}
+
+.blotter-tabs-foot button.on {
+  border-top-color: var(--accent);
+}
+
+/* ── The data window ── */
+
+.mgr-data {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+
+.mgr-data-head {
+  padding: 6px 8px 3px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-data-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mgr-data-row .mono {
+  color: var(--ink);
+}
+
+/* ── The blotter's direction mark ── */
+
+.pos-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pos-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.pos-buy {
+  background: var(--buy);
+}
+
+.pos-sell {
+  background: var(--sell);
+}
+
+/* ── The balance strip ──
+   Red, as the reference platform runs it, and for the reason it does: these
+   figures belong to ONE account, and reading them as the house's is the
+   expensive mistake. A colour nothing else on the screen uses is the
+   cheapest way to say "this has a subject". */
+
+.mgr-status {
+  color: var(--loss);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ── Acting on several positions at once ── */
+
+.mgr-bulk {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-bulk-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.mgr-bulk-go {
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mgr-bulk-go:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.mgr-bulk-go:disabled {
+  color: var(--ink-4);
+  cursor: not-allowed;
+}
+
+.row-tick {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* A count beside a tab name, so a glance says how much is behind it. */
+.tab-count {
+  margin-left: 4px;
+  color: var(--ink-4);
+}
+
+.blotter-tabs-foot button.on .tab-count {
+  color: var(--ink-3);
+}
+
+/* Symbol tabs, now at the foot of the chart with the rest of them. */
+.mgr-symtabs.mgr-foot-tabs {
+  border-top: 1px solid var(--rule);
+  border-bottom: none;
+}

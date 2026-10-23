@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/money",
+    "crates/domain",
+    "crates/journal",
+    "crates/ledger",
+    "crates/book",
+    "crates/risk",
+    "crates/pending",
+    "crates/rollover",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# 1.82 for `Option::is_none_or`, used by the risk crate.
+rust-version = "1.82"
+license = "UNLICENSED"
+publish = false
+
+# The engine core deliberately has zero third-party dependencies.
+#
+# Every crate in this workspace is std-only. That is not asceticism: it means
+# the trade path has no supply-chain surface, no transitive version drift
+# between releases, and a byte-identical build years from now when a regulator
+# asks us to reproduce a specific trading day. Serialisation, checksums and
+# the RNG used in tests are all hand-rolled here for that reason.
+#
+# Dependencies are allowed and expected *outside* this workspace — the FIX
+# gateway, the WebSocket edge and the back office all take them.
+[workspace.dependencies]
+money = { path = "crates/money" }
+domain = { path = "crates/domain" }
+journal = { path = "crates/journal" }
+ledger = { path = "crates/ledger" }
+book = { path = "crates/book" }
+risk = { path = "crates/risk" }
+pending = { path = "crates/pending" }
+rollover = { path = "crates/rollover" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+# A panic in the matching loop must stop the process, not unwind past a
+# half-applied order into an inconsistent book. The journal replays us back.
+
+[profile.bench]
+inherits = "release"
+debug = true

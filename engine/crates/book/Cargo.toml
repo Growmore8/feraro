@@ -1,0 +1,12 @@
+[package]
+name = "book"
+description = "Price-time priority order book and matching"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+domain.workspace = true
+money.workspace = true

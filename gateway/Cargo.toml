@@ -1,0 +1,43 @@
+[package]
+name = "gateway"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "UNLICENSED"
+publish = false
+description = "WebSocket edge between the browser and the Feraro engine"
+
+# This project is where the dependencies live. The engine workspace next door
+# holds its zero-dependency line so the trade path stays reproducible; the edge
+# needs an async runtime and TLS, so it lives out here and depends inward.
+[dependencies]
+money = { path = "../engine/crates/money" }
+domain = { path = "../engine/crates/domain" }
+journal = { path = "../engine/crates/journal" }
+risk = { path = "../engine/crates/risk" }
+# The double-entry books, folded from the same journal as the portfolio.
+ledger = { path = "../engine/crates/ledger" }
+pending = { path = "../engine/crates/pending" }
+rollover = { path = "../engine/crates/rollover" }
+
+anyhow = "1"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+# `raw_value` lets a provider frame hand over a price token untouched. See
+# src/feeds/number.rs for why `arbitrary_precision` is not used instead.
+serde_json = { version = "1", features = ["raw_value"] }
+# Loads API keys from gateway/.env, so they never go in the shell history
+# or the repository.
+dotenvy = "0.15"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+# rustls ships two crypto backends and refuses to guess between them, so the
+# provider is chosen here and installed once in `main`. `ring` rather than
+# `aws-lc-rs` because it needs no C toolchain, which matters on Windows.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+argon2 = "0.5"
+getrandom = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

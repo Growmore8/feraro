@@ -1,0 +1,28 @@
+# What must never reach a build context.
+#
+# Two reasons. Secrets: a .env copied into a layer is a key in the image
+# whatever the Dockerfile does afterwards. And the journal — it is the
+# platform's state, it belongs in a volume, and baking one into an image
+# means a redeploy quietly reverts every balance to whenever that image was
+# built.
+
+**/.env
+**/.env.*
+!**/.env.example
+
+# The database, such as it is.
+gateway/journal/
+gateway/*.jnl
+**/users.json
+
+# Build output, which the build makes for itself.
+**/target/
+**/node_modules/
+**/dist/
+
+.git/
+.github/
+design/
+docs/
+**/*.md
+!README.md

@@ -1,0 +1,46 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Trading terminals" },
+    { "id": "page-2", "name": "Admin operations" },
+    { "id": "page-3", "name": "Mobile & system" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Client terminal", "page": "page-1", "x": 0, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Dealer.dc.html", "title": "Manager / dealer terminal", "page": "page-1", "x": 1560, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Admin.dc.html", "title": "Admin — instruments", "page": "page-1", "x": 3120, "y": 0, "w": 1440, "h": 900 },
+
+    { "file": "TradeEdit.dc.html", "title": "Admin — edit trade & audit", "page": "page-2", "x": 0, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Funds.dc.html", "title": "Admin — deposit, withdrawal, credit, debit", "page": "page-2", "x": 1560, "y": 0, "w": 1440, "h": 900 },
+    { "file": "Activity.dc.html", "title": "Admin — client activity", "page": "page-2", "x": 3120, "y": 0, "w": 1440, "h": 900 },
+
+    { "file": "Mobile.dc.html", "title": "Client mobile", "page": "page-3", "x": 0, "y": 0, "w": 390, "h": 844 },
+    { "file": "Tokens.dc.html", "title": "Design tokens", "page": "page-3", "x": 510, "y": 0, "w": 900, "h": 1520 }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "page": "page-1",
+      "x": 0,
+      "y": -210,
+      "w": 700,
+      "text": "Feraro terminals — three roles, one component library.\n\nStructure follows the MT4-lineage terminal convention seen in the reference: dockable panels, Market Watch and Navigator on the right, indicator subchart under the price, the Trade / History / Journal / Mailbox / News / Alerts tab strip, and an OHLC status bar. Palette, type and icons are ours.\n\nVocabulary comes from the Rust engine — order types, time-in-force, RejectReason variants, margin_level_bp, journal seq. Figures are illustrative sample data. Static mockups: controls are drawn, not wired."
+    },
+    {
+      "id": "admin-note",
+      "page": "page-2",
+      "x": 0,
+      "y": -210,
+      "w": 700,
+      "text": "Admin operations.\n\nTrade amendment never overwrites the original fill — it writes a TradeAmended event, needs a reason, and needs a second administrator to approve. The client statement shows both values.\n\nFunds keeps deposit, withdrawal, credit and debit as four distinct operations, and previews the double-entry postings before anything is written. Credit is bonus money: it counts toward margin and cannot be withdrawn."
+    },
+    {
+      "id": "accent-note",
+      "page": "page-3",
+      "x": 510,
+      "y": -210,
+      "w": 700,
+      "text": "Mobile is light-themed to match the reference; it is the same token set inverted, not a second design.\n\nAccent is never a data colour. Amber marks what you can act on; blue/red mean buy/sell; green/red mean profit/loss.\n\nOne open decision at the bottom of the token sheet: buy = blue here, as in MT4. Some platforms run it the other way. Worth settling before build."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

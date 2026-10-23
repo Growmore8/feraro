@@ -1,0 +1,501 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0E1418; color: #E4EBF0;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      font-size: 12px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    a { color: #E0A040; text-decoration: none; }
+    a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A;
+    }
+    .ph {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 30px; padding: 0 12px; border-bottom: 1px solid #26333B; background: #121A20;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: #677D8A;
+      font-weight: 400; text-align: left; padding: 6px 10px;
+      border-bottom: 1px solid #26333B; background: #121A20;
+    }
+    td { padding: 6px 10px; border-bottom: 1px solid #1B252C; }
+    .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+    .sym { font-weight: 600; }
+    .up { color: #3FBF8F; } .dn { color: #E8635A; } .dim { color: #677D8A; }
+    .pill {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 2px; display: inline-block;
+    }
+    .btn {
+      font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px;
+      letter-spacing: 0.05em; padding: 3px 8px; border: 1px solid #35454F;
+      color: #9DAFBB; display: inline-block; white-space: nowrap;
+    }
+    .tab { padding: 0 13px; height: 30px; display: flex; align-items: center; font-size: 11px; color: #9DAFBB; border-right: 1px solid #26333B; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0E1418;">
+
+  <!-- ── Top bar ── -->
+  <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 16px; background: #121A20; border-bottom: 1px solid #26333B;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 15.5 L7 9.5 L11 12 L17 4"></path><path d="M3 17.5 L17 17.5"></path>
+      </svg>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.02em;">FERARO</span>
+      <span class="cap" style="padding-top: 2px;">Dealer</span>
+    </div>
+    <div style="display: flex; align-items: stretch; height: 52px;">
+      <div class="tab" style="height: 52px; color: {{accent}}; box-shadow: inset 0 -2px 0 0 currentColor;">Risk</div>
+      <div class="tab" style="height: 52px;">Clients</div>
+      <div class="tab" style="height: 52px;">Routing</div>
+      <div class="tab" style="height: 52px;">Liquidity</div>
+      <div class="tab" style="height: 52px;">Blotter</div>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #E8635A; display: block;"></span>
+      <span class="cap">3 accounts below call &middot; 2 orders awaiting you</span>
+      <div style="width: 1px; height: 26px; background: #26333B;"></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span class="m" style="font-size: 11px;">M. Rao</span>
+        <span class="cap">Senior dealer</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Desk KPIs: the five numbers that decide whether to hedge ── -->
+  <div style="flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: #26333B; border-bottom: 1px solid #26333B;">
+    <div style="background: #151D23; padding: 12px 16px; display: flex; flex-direction: column; gap: 3px;">
+      <span class="cap">Net client exposure</span>
+      <span class="m" style="font-size: 24px; font-weight: 500; line-height: 1.05;">+4.82M</span>
+      <span class="cap" style="color: #4C9BE8;">Long USD equivalent</span>
+    </div>
+    <div style="background: #151D23; padding: 12px 16px; display: flex; flex-direction: column; gap: 3px;">
+      <span class="cap">Unhedged</span>
+      <span class="m" style="font-size: 24px; font-weight: 500; line-height: 1.05; color: #E0A040;">1.91M</span>
+      <span class="cap">39.6% of net &middot; limit 45%</span>
+    </div>
+    <div style="background: #151D23; padding: 12px 16px; display: flex; flex-direction: column; gap: 3px;">
+      <span class="cap">B-book P&amp;L today</span>
+      <span class="m up" style="font-size: 24px; font-weight: 500; line-height: 1.05;">+38,412</span>
+      <span class="cap">USD &middot; 2,841 fills</span>
+    </div>
+    <div style="background: #151D23; padding: 12px 16px; display: flex; flex-direction: column; gap: 3px;">
+      <span class="cap">Accounts below call</span>
+      <span class="m dn" style="font-size: 24px; font-weight: 500; line-height: 1.05;">3</span>
+      <span class="cap">1 within 8% of stop-out</span>
+    </div>
+    <div style="background: #151D23; padding: 12px 16px; display: flex; flex-direction: column; gap: 3px;">
+      <span class="cap">LP reject rate 1h</span>
+      <span class="m" style="font-size: 24px; font-weight: 500; line-height: 1.05;">2.4%</span>
+      <span class="cap">Last look &middot; 61 of 2,540</span>
+    </div>
+  </div>
+
+  <!-- ── Middle ── -->
+  <div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 1px; background: #26333B;">
+
+    <!-- Chart over exposure -->
+    <div style="display: flex; flex-direction: column; gap: 1px; background: #26333B; min-height: 0;">
+
+      <div style="background: #151D23; flex: none; height: 250px; display: flex; flex-direction: column;">
+        <div class="ph">
+          <span class="cap">Desk net exposure &middot; session to date</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span class="cap"><span style="color: #4C9BE8;">&#9679;</span> Net long USD</span>
+            <span class="cap"><span style="color: #E8635A;">&#9679;</span> Hedge limit 5.5M</span>
+            <span class="btn">EURUSD</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0;">
+          <svg viewBox="0 0 900 200" width="100%" height="100%" preserveAspectRatio="none" role="img" aria-label="Desk net exposure through the session, minus two to plus six million US dollars, against a 5.5 million hedge limit">
+            <g stroke="#1C262E" stroke-width="1" stroke-dasharray="2 4">
+              <line x1="40" y1="20" x2="840" y2="20"></line><line x1="40" y1="50" x2="840" y2="50"></line>
+              <line x1="40" y1="80" x2="840" y2="80"></line><line x1="40" y1="140" x2="840" y2="140"></line>
+            </g>
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A">
+              <text x="848" y="24">+6M</text><text x="848" y="54">+4M</text><text x="848" y="84">+2M</text>
+              <text x="848" y="114">0</text><text x="848" y="144">&minus;2M</text>
+            </g>
+            <rect x="40" y="20" width="800" height="7.5" fill="#2A1618"></rect>
+            <line x1="40" y1="27.5" x2="840" y2="27.5" stroke="#E8635A" stroke-width="1" stroke-dasharray="4 3"></line>
+            <path d="M40 104 L74.8 98 L109.6 92 L144.3 96.5 L179.1 86 L213.9 78.5 L248.7 83 L283.5 74 L318.3 65 L353 71 L387.8 62 L422.6 53 L457.4 59 L492.2 48.5 L527 41 L561.7 47 L596.5 38 L631.3 32 L666.1 36.5 L700.9 29 L735.7 39.5 L770.4 44 L805.2 41 L840 37.7 L840 110 L40 110 Z" fill="#12222F"></path>
+            <polyline fill="none" stroke="#4C9BE8" stroke-width="1.8" stroke-linejoin="round"
+              points="40,104 74.8,98 109.6,92 144.3,96.5 179.1,86 213.9,78.5 248.7,83 283.5,74 318.3,65 353,71 387.8,62 422.6,53 457.4,59 492.2,48.5 527,41 561.7,47 596.5,38 631.3,32 666.1,36.5 700.9,29 735.7,39.5 770.4,44 805.2,41 840,37.7"></polyline>
+            <line x1="40" y1="110" x2="840" y2="110" stroke="#35454F" stroke-width="1"></line>
+            <circle cx="840" cy="37.7" r="4" fill="#4C9BE8"></circle>
+            <rect x="756" y="8" width="84" height="17" fill="#16304A"></rect>
+            <text x="762" y="21" font-family="IBM Plex Mono, monospace" font-size="10" fill="#4C9BE8">NOW +4.82M</text>
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A" text-anchor="middle">
+              <text x="40" y="180">22:00</text><text x="248.7" y="180">02:00</text><text x="457.4" y="180">06:00</text>
+              <text x="666.1" y="180">10:00</text><text x="840" y="180">11:42</text>
+            </g>
+            <line x1="40" y1="164" x2="840" y2="164" stroke="#26333B" stroke-width="1"></line>
+          </svg>
+        </div>
+      </div>
+
+    <div style="background: #151D23; flex-grow: 1; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph">
+        <span class="cap">Net exposure by symbol</span>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500;">Hedge selected</span>
+          <span class="btn">Flatten all</span>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 78px;">Symbol</th>
+            <th class="n">Client long</th><th class="n">Client short</th><th class="n">Net</th>
+            <th style="width: 150px;">Skew</th>
+            <th class="n">B-book</th><th class="n">Hedged</th><th class="n">Unhedged</th>
+            <th class="n">Floating</th><th style="width: 70px;">Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background: #1B252C;">
+            <td class="sym">EURUSD</td>
+            <td class="n">12.40M</td><td class="n">8.10M</td><td class="n" style="color: #4C9BE8;">+4.30M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 61%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 39%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">2.60M</td><td class="n dim">1.70M</td><td class="n" style="color: #E0A040;">2.60M</td>
+            <td class="n dn">&minus;18,204</td>
+            <td><span class="pill" style="background: #2E2513; color: #E0A040;">Watch</span></td>
+          </tr>
+          <tr>
+            <td class="sym">XAUUSD</td>
+            <td class="n">6.80M</td><td class="n">1.20M</td><td class="n" style="color: #4C9BE8;">+5.60M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 85%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 15%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">1.10M</td><td class="n dim">4.50M</td><td class="n" style="color: #E0A040;">1.10M</td>
+            <td class="n dn">&minus;42,880</td>
+            <td><span class="pill" style="background: #301A17; color: #E8635A;">Breach</span></td>
+          </tr>
+          <tr>
+            <td class="sym">USDJPY</td>
+            <td class="n">3.10M</td><td class="n">7.40M</td><td class="n" style="color: #E8635A;">&minus;4.30M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 30%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 70%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">4.30M</td><td class="n dim">&mdash;</td><td class="n" style="color: #E0A040;">4.30M</td>
+            <td class="n up">+21,105</td>
+            <td><span class="pill" style="background: #2E2513; color: #E0A040;">Watch</span></td>
+          </tr>
+          <tr>
+            <td class="sym">GBPUSD</td>
+            <td class="n">2.20M</td><td class="n">2.05M</td><td class="n dim">+0.15M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 52%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 48%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">0.15M</td><td class="n dim">&mdash;</td><td class="n dim">0.15M</td>
+            <td class="n up">+3,914</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Flat</span></td>
+          </tr>
+          <tr>
+            <td class="sym">US500</td>
+            <td class="n">4.60M</td><td class="n">1.80M</td><td class="n" style="color: #4C9BE8;">+2.80M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 72%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 28%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">0.90M</td><td class="n dim">1.90M</td><td class="n dim">0.90M</td>
+            <td class="n up">+9,640</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Ok</span></td>
+          </tr>
+          <tr>
+            <td class="sym">BTCUSD</td>
+            <td class="n">1.90M</td><td class="n">0.40M</td><td class="n" style="color: #4C9BE8;">+1.50M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 83%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 17%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">1.50M</td><td class="n dim">&mdash;</td><td class="n" style="color: #E0A040;">1.50M</td>
+            <td class="n dn">&minus;11,470</td>
+            <td><span class="pill" style="background: #2E2513; color: #E0A040;">Watch</span></td>
+          </tr>
+          <tr>
+            <td class="sym">USOIL</td>
+            <td class="n">0.80M</td><td class="n">1.90M</td><td class="n" style="color: #E8635A;">&minus;1.10M</td>
+            <td>
+              <div style="display: flex; align-items: center; height: 9px; background: #1F2A32;">
+                <div style="width: 30%; height: 9px; background: #4C9BE8;"></div>
+                <div style="width: 70%; height: 9px; background: #E8635A;"></div>
+              </div>
+            </td>
+            <td class="n">1.10M</td><td class="n dim">&mdash;</td><td class="n dim">1.10M</td>
+            <td class="n up">+2,208</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Ok</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </div>
+
+    <!-- Margin call queue -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph">
+        <span class="cap" style="color: #E8635A;">Margin call queue</span>
+        <span class="cap">Call 100% &middot; Stop-out 50%</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <!-- Nearest stop-out first: this row is the whole reason the panel exists -->
+        <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E8635A; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px; background: #1A1416;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div style="display: flex; align-items: baseline; gap: 9px;">
+              <span class="m" style="font-size: 13px; font-weight: 500;">#4471</span>
+              <span class="dim" style="font-size: 11px;">A. Okonkwo &middot; USD &middot; 1:200</span>
+            </div>
+            <span class="m dn" style="font-size: 17px; font-weight: 500;">58%</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 5px; background: #1F2A32;">
+            <div style="width: 16%; height: 5px; background: #E8635A;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="cap">Equity <span style="color: #E4EBF0;">4,102.55</span></span>
+            <span class="cap">Margin <span style="color: #E4EBF0;">7,073.36</span></span>
+            <span class="cap" style="color: #E8635A;">8% from stop-out</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <span class="btn" style="color: #E8635A; border-color: #E8635A;">Force close largest</span>
+            <span class="btn">Notify</span>
+            <span class="btn">Open account</span>
+          </div>
+        </div>
+
+        <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E0A040; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div style="display: flex; align-items: baseline; gap: 9px;">
+              <span class="m" style="font-size: 13px; font-weight: 500;">#3908</span>
+              <span class="dim" style="font-size: 11px;">L. Marchetti &middot; EUR &middot; 1:100</span>
+            </div>
+            <span class="m" style="font-size: 17px; font-weight: 500; color: #E0A040;">81%</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 5px; background: #1F2A32;">
+            <div style="width: 38%; height: 5px; background: #E0A040;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="cap">Equity <span style="color: #E4EBF0;">9,880.10</span></span>
+            <span class="cap">Margin <span style="color: #E4EBF0;">12,197.65</span></span>
+            <span class="cap">31% from stop-out</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <span class="btn">Notify</span>
+            <span class="btn">Open account</span>
+          </div>
+        </div>
+
+        <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E0A040; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div style="display: flex; align-items: baseline; gap: 9px;">
+              <span class="m" style="font-size: 13px; font-weight: 500;">#5120</span>
+              <span class="dim" style="font-size: 11px;">Ridgeway Capital &middot; USD &middot; 1:50</span>
+            </div>
+            <span class="m" style="font-size: 17px; font-weight: 500; color: #E0A040;">94%</span>
+          </div>
+          <div style="display: flex; align-items: center; height: 5px; background: #1F2A32;">
+            <div style="width: 48%; height: 5px; background: #E0A040;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="cap">Equity <span style="color: #E4EBF0;">148,220.00</span></span>
+            <span class="cap">Margin <span style="color: #E4EBF0;">157,680.85</span></span>
+            <span class="cap">44% from stop-out</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <span class="btn">Notify</span>
+            <span class="btn">Open account</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stop-outs already executed by the engine -->
+      <div class="ph" style="border-top: 1px solid #26333B;">
+        <span class="cap">Stopped out today</span><span class="m dim" style="font-size: 10px;">2</span>
+      </div>
+      <table>
+        <thead><tr><th>Account</th><th>Symbol</th><th class="n">Volume</th><th class="n">Price</th><th class="n">Time</th></tr></thead>
+        <tbody>
+          <tr><td class="m">#2244</td><td class="sym">XAUUSD</td><td class="n">2.00</td><td class="n">2361.80</td><td class="n dim">10:14:52</td></tr>
+          <tr><td class="m">#6017</td><td class="sym">EURUSD</td><td class="n">5.00</td><td class="n">1.08110</td><td class="n dim">09:38:07</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Bottom ── -->
+  <div style="flex: none; height: 244px; display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 1px; background: #26333B; border-top: 1px solid #26333B;">
+
+    <!-- Routing rules -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph">
+        <span class="cap">A / B book routing</span>
+        <div style="display: flex; gap: 6px;"><span class="btn">Simulate</span><span class="btn">New rule</span></div>
+      </div>
+      <table>
+        <thead>
+          <tr><th style="width: 34px;">#</th><th>Rule</th><th>Matches</th><th style="width: 96px;">Book</th><th class="n">Clients</th><th class="n">Notional today</th><th style="width: 70px;">State</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m dim">1</td><td>Consistently profitable</td>
+            <td class="dim">90-day P&amp;L &gt; 0 <span class="m">AND</span> trades &ge; 50</td>
+            <td><span class="pill" style="background: #16304A; color: #4C9BE8;">A &middot; STP</span></td>
+            <td class="n">148</td><td class="n">31.4M</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Live</span></td>
+          </tr>
+          <tr>
+            <td class="m dim">2</td><td>Scalpers</td>
+            <td class="dim">Median hold &lt; 120 s</td>
+            <td><span class="pill" style="background: #16304A; color: #4C9BE8;">A &middot; STP</span></td>
+            <td class="n">62</td><td class="n">18.9M</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Live</span></td>
+          </tr>
+          <tr>
+            <td class="m dim">3</td><td>Large ticket</td>
+            <td class="dim">Order notional &gt; 500k</td>
+            <td><span class="pill" style="background: #16304A; color: #4C9BE8;">A &middot; STP</span></td>
+            <td class="n">24</td><td class="n">44.2M</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Live</span></td>
+          </tr>
+          <tr>
+            <td class="m dim">4</td><td>News window</td>
+            <td class="dim">&plusmn;120 s of high-impact event</td>
+            <td><span class="pill" style="background: #16304A; color: #4C9BE8;">A &middot; STP</span></td>
+            <td class="n dim">all</td><td class="n">6.1M</td>
+            <td><span class="pill" style="background: #2E2513; color: #E0A040;">Armed</span></td>
+          </tr>
+          <tr>
+            <td class="m dim">5</td><td>Everything else</td>
+            <td class="dim">Default</td>
+            <td><span class="pill" style="background: #2A2118; color: #E0A040;">B &middot; Internal</span></td>
+            <td class="n">3,914</td><td class="n">96.8M</td>
+            <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Live</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Dealer intervention queue -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph">
+        <span class="cap" style="color: #E0A040;">Awaiting dealer</span>
+        <span class="cap">Auto-reject in 3 s</span>
+      </div>
+
+      <div style="border-bottom: 1px solid #1B252C; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span class="m" style="font-size: 12px;">#100613</span>
+            <span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span>
+            <span class="sym">EURUSD</span>
+            <span class="m">4.00</span>
+          </div>
+          <span class="m" style="font-size: 11px; color: #E0A040;">1.8 s</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span class="cap">Requested <span class="m" style="color: #E4EBF0;">1.08532</span></span>
+          <span class="cap">Now <span class="m" style="color: #E4EBF0;">1.08549</span></span>
+          <span class="cap" style="color: #E0A040;">1.7 pip slip</span>
+        </div>
+        <span class="dim" style="font-size: 11px;">Price moved beyond the group's execution tolerance.</span>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500;">Requote 1.08549</span>
+          <span class="btn" style="color: #3FBF8F; border-color: #24503E;">Fill anyway</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Reject</span>
+        </div>
+      </div>
+
+      <div style="border-bottom: 1px solid #1B252C; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span class="m" style="font-size: 12px;">#100612</span>
+            <span class="pill" style="background: #3A2226; color: #E8635A;">Sell</span>
+            <span class="sym">XAUUSD</span>
+            <span class="m">12.00</span>
+          </div>
+          <span class="m" style="font-size: 11px; color: #E8635A;">2.6 s</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span class="cap">Requested <span class="m" style="color: #E4EBF0;">2378.44</span></span>
+          <span class="cap">Now <span class="m" style="color: #E4EBF0;">2378.44</span></span>
+          <span class="cap">Above auto-fill size</span>
+        </div>
+        <span class="dim" style="font-size: 11px;">Notional 2.85M exceeds the desk's automatic fill ceiling.</span>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #3FBF8F; border-color: #24503E;">Fill</span>
+          <span class="btn">Partial 6.00</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Reject</span>
+        </div>
+      </div>
+
+      <div style="flex-grow: 1;"></div>
+
+      <!-- LP sessions -->
+      <div class="ph" style="border-top: 1px solid #26333B;"><span class="cap">Liquidity sessions</span></div>
+      <table>
+        <tbody>
+          <tr>
+            <td style="width: 12px; padding-right: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #3FBF8F; display: block;"></span></td>
+            <td>Bank A</td><td class="n dim">FIX 4.4</td><td class="n">2.1 ms</td><td class="n up">98.4%</td>
+          </tr>
+          <tr>
+            <td style="width: 12px; padding-right: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #3FBF8F; display: block;"></span></td>
+            <td>Bank B</td><td class="n dim">FIX 4.4</td><td class="n">3.4 ms</td><td class="n up">96.9%</td>
+          </tr>
+          <tr>
+            <td style="width: 12px; padding-right: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #E0A040; display: block;"></span></td>
+            <td>ECN &middot; PoP</td><td class="n dim">FIX 4.4</td><td class="n" style="color: #E0A040;">11.8 ms</td><td class="n" style="color: #E0A040;">91.2%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#E0A040' };
+  }
+}
+</script>
+</body>
+</html>

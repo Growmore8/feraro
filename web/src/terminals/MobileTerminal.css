@@ -1,0 +1,687 @@
+/* The phone terminal.
+
+   One screen at a time, a tab bar to switch, and everything sized for a
+   thumb rather than a pointer: targets are at least 44px, the two that deal
+   are the widest things on the card, and nothing important hides behind a
+   hover nobody on a phone can perform. */
+
+.mob {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--mob-ink);
+  background: var(--mob-bg);
+  overscroll-behavior: none;
+}
+
+/* ── Top ── */
+
+.mob-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px;
+  background: var(--mob-chrome);
+}
+
+.mob-round {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+  color: var(--mob-ink);
+  background: var(--mob-raise);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.mob-where {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mob-live {
+  padding: 3px 9px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ff9d9d;
+  background: rgb(200 70 70 / 20%);
+  border-radius: 20px;
+}
+
+.mob-live.on {
+  color: #7ff0c0;
+  background: rgb(47 174 130 / 20%);
+}
+
+/* ── Search ── */
+
+.mob-find {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 10px;
+  padding: 0 14px;
+  background: var(--mob-raise);
+  border-radius: 11px;
+}
+
+.mob-find span {
+  font-size: 15px;
+  color: var(--mob-dim);
+}
+
+.mob-find input {
+  flex: 1;
+  min-width: 0;
+  padding: 13px 0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--mob-ink);
+  background: transparent;
+  border: none;
+}
+
+.mob-find input::placeholder {
+  color: var(--mob-dim);
+}
+
+.mob-find input:focus-visible {
+  outline: none;
+}
+
+/* ── Period pills ── */
+
+.mob-periods {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin: 0 12px 10px;
+  padding: 4px;
+  background: var(--mob-raise);
+  border-radius: 11px;
+}
+
+.mob-periods button {
+  flex: 1;
+  padding: 9px 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mob-dim);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mob-periods button.on {
+  color: #fff;
+  background: var(--mob-accent);
+}
+
+/* ── The scrolling middle ── */
+
+.mob-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 12px 12px;
+}
+
+.mob-empty {
+  padding: 36px 12px;
+  text-align: center;
+  color: var(--mob-dim);
+}
+
+/* ── A quote ── */
+
+.mob-quote {
+  margin-bottom: 10px;
+  padding: 10px 12px 8px;
+  background: var(--mob-card);
+  border: 1px solid var(--mob-rule);
+  border-radius: 13px;
+}
+
+.mob-quote header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+}
+
+.mob-star {
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--mob-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-star.on {
+  color: var(--mob-gold);
+}
+
+.mob-quote-sym {
+  flex: 1;
+  padding: 0;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--mob-ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-quote-src {
+  min-width: 24px;
+  text-align: right;
+  text-transform: uppercase;
+  font-size: 9.5px;
+}
+
+.mob-quote-prices {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 2px 6px;
+  font-size: 15px;
+}
+
+.mob-quote-deal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mob-sell,
+.mob-buy {
+  flex: 1;
+  min-height: 46px;
+  padding: 12px 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.mob-sell {
+  color: var(--sell);
+  background: var(--sell-wash);
+  border-color: color-mix(in srgb, var(--sell) 38%, transparent);
+}
+
+.mob-buy {
+  color: var(--buy);
+  background: var(--buy-wash);
+  border-color: color-mix(in srgb, var(--buy) 38%, transparent);
+}
+
+.mob-spark {
+  flex: none;
+  width: 92px;
+  height: 38px;
+}
+
+.mob-spark-line {
+  fill: none;
+  stroke: var(--mob-accent-soft);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.mob-spark-fill {
+  fill: var(--mob-accent-soft);
+  opacity: 0.16;
+  stroke: none;
+}
+
+.mob-quote footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 8px;
+  font-size: 11.5px;
+}
+
+.mob-pip {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 50%;
+}
+
+.mob-pip.low {
+  background: var(--loss);
+}
+
+.mob-pip.high {
+  background: var(--profit);
+}
+
+/* The honest label: this is the session's range, not the day's. */
+.mob-since {
+  flex: 1;
+  text-align: center;
+  font-size: 9.5px;
+}
+
+/* ── Chart ── */
+
+.mob-chart {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mob-symbols {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.mob-symbols button {
+  flex: none;
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--mob-dim);
+  background: var(--mob-raise);
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+.mob-symbols button.on {
+  color: #fff;
+  background: var(--mob-accent);
+}
+
+.mob-chart .chart-area {
+  min-height: 300px;
+}
+
+.mob-deal {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.mob-deal .mob-sell,
+.mob-deal .mob-buy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 54px;
+}
+
+/* ── Trades ── */
+
+.mob-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 10px;
+  font-size: 13px;
+}
+
+.mob-bulk label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mob-dim);
+}
+
+.mob-bulk button {
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--mob-accent-soft);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-bulk button:disabled {
+  color: var(--mob-dim);
+  opacity: 0.5;
+}
+
+.mob-trade {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 9px;
+  padding: 12px;
+  background: var(--mob-card);
+  border: 1px solid var(--mob-rule);
+  border-radius: 13px;
+}
+
+.mob-trade-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mob-trade-head {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.mob-trade-line {
+  padding-top: 3px;
+  font-size: 11.5px;
+}
+
+.mob-trade-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.mob-pnl {
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 7px;
+}
+
+.mob-pnl.profit {
+  color: #fff;
+  background: var(--profit);
+}
+
+.mob-pnl.loss {
+  color: #fff;
+  background: var(--loss);
+}
+
+.mob-trade-right button {
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--mob-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── History ── */
+
+.mob-hist {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  padding: 12px;
+  background: var(--mob-card);
+  border: 1px solid var(--mob-rule);
+  border-radius: 13px;
+}
+
+.mob-hist-what {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mob-hist-when {
+  padding-top: 3px;
+  font-size: 11px;
+}
+
+.mob-hist-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-size: 13.5px;
+}
+
+.mob-hist-right .dim {
+  font-size: 11px;
+}
+
+/* ── Net trade ── */
+
+.mob-net {
+  margin-bottom: 9px;
+  padding: 12px;
+  background: var(--mob-card);
+  border: 1px solid var(--mob-rule);
+  border-radius: 13px;
+}
+
+.mob-net-head,
+.mob-net-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mob-net-head {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.mob-net-body {
+  padding-top: 5px;
+  font-size: 13px;
+}
+
+/* ── The balance bar ── */
+
+.mob-balance {
+  flex: none;
+  background: var(--mob-accent);
+  color: #fff;
+}
+
+.mob-balance-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-caret {
+  flex: 1;
+  text-align: center;
+  color: var(--mob-gold);
+}
+
+.mob-balance-big {
+  font-size: 16px;
+}
+
+.mob-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--mob-rule);
+}
+
+.mob-cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 13px;
+  font-size: 11.5px;
+  color: var(--mob-ink);
+  background: var(--mob-card);
+}
+
+.mob-cell span:first-child {
+  color: var(--mob-dim);
+}
+
+/* ── Tabs ── */
+
+.mob-tabs {
+  flex: none;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--mob-chrome);
+  border-top: 1px solid var(--mob-rule);
+}
+
+.mob-tabs button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 2px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--mob-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-tabs button.on {
+  color: var(--mob-ink);
+}
+
+.mob-tab-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.mob-tabs button.on .mob-tab-icon {
+  color: var(--mob-accent-soft);
+}
+
+/* ── Drawer ── */
+
+.mob-drawer-back {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgb(0 0 0 / 48%);
+}
+
+.mob-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(82vw, 320px);
+  height: 100%;
+  background: var(--mob-bg);
+  box-shadow: 8px 0 32px rgb(0 0 0 / 40%);
+  overflow-y: auto;
+}
+
+.mob-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 16px 20px;
+  background: linear-gradient(140deg, var(--brand-deep), var(--brand));
+  color: #fff;
+}
+
+.mob-avatar {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brand-deep);
+  background: var(--mob-gold);
+  border-radius: 50%;
+}
+
+.mob-drawer-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--mob-gold);
+  overflow-wrap: anywhere;
+}
+
+.mob-drawer-sub {
+  padding-top: 2px;
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+
+.mob-drawer-list {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.mob-drawer-list button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 18px;
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  color: var(--mob-ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-drawer-list button span {
+  width: 20px;
+  font-size: 16px;
+  color: var(--mob-gold);
+}
+
+.mob-drawer-list button.danger {
+  color: #ff8f8f;
+}
+
+.mob-drawer-list button.danger span {
+  color: inherit;
+}
+
+.mob-drawer-rule {
+  height: 1px;
+  margin: 7px 18px;
+  background: var(--mob-rule);
+}

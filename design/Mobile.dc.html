@@ -1,0 +1,241 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #FFFFFF; color: #14181D;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1565C0; text-decoration: none; }
+    a:hover { color: #0D47A1; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8A97A3; }
+    .up { color: #2E9E6B; } .dn { color: #D32F2F; }
+    .buy { color: #1565C0; } .sell { color: #D32F2F; }
+    .dim { color: #8A97A3; }
+    .rail { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 13px; padding: 10px 0; border-right: 1px solid #E4E9ED; background: #F7F9FA; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #FFFFFF;">
+
+  <!-- Space the real OS status bar occupies. Nothing drawn here on purpose. -->
+  <div style="height: 47px; flex: none;"></div>
+
+  <!-- Chart toolbar -->
+  <div style="height: 40px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 12px; border-bottom: 1px solid #E4E9ED;">
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#5A6672" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15 L7 9 L11 12 L17 4"></path></svg>
+      <span style="font-size: 13px;">Indicators</span>
+    </div>
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5L3 9l4 4"></path><path d="M3 9h9a5 5 0 010 10h-2"></path></svg>
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5l4 4-4 4"></path><path d="M17 9H8a5 5 0 000 10h2"></path></svg>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#5A6672" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15V6a2 2 0 012-2h8l2 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z"></path><path d="M7 4v4h6V4M7 17v-4h6v4"></path></svg>
+      <span style="font-size: 13px;">Save</span>
+    </div>
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="2.5"></circle><path d="M10 3v2M10 15v2M3 10h2M15 10h2M5 5l1.5 1.5M13.5 13.5L15 15M15 5l-1.5 1.5M6.5 13.5L5 15"></path></svg>
+  </div>
+
+  <!-- Symbol header -->
+  <div style="height: 42px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #E4E9ED;">
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 17px; font-weight: 600;">EUR/USD</span>
+      <span class="m dim" style="font-size: 13px;">M5</span>
+    </div>
+    <span class="m up" style="font-size: 12px;">1.08532 &nbsp;+0.00048 (+0.04%)</span>
+  </div>
+
+  <!-- Chart with drawing rail -->
+  <div style="flex-grow: 1; min-height: 0; display: flex;">
+    <div class="rail">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#5A6672" stroke-width="1.5" stroke-linecap="round"><path d="M4 16L16 4"></path><circle cx="4" cy="16" r="1.6"></circle><circle cx="16" cy="4" r="1.6"></circle></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M3 13l5-5 4 4 5-7"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="6" width="14" height="8"></rect></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M4 6h12M10 6v10"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M3 16c4-10 10-10 14 0"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 6.5v4l2.5 1.5"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M13 4l3 3-8 8-4 1 1-4z"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"></circle><path d="M13 13l4 4"></path></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z"></path><circle cx="10" cy="10" r="2"></circle></svg>
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M6 4h8v12l-4-3-4 3z"></path></svg>
+    </div>
+
+    <div style="flex-grow: 1; min-width: 0;">
+      <svg viewBox="0 0 356 500" width="100%" height="100%" preserveAspectRatio="none" role="img" aria-label="EURUSD five-minute candles with RSI 14 and MACD 12 26 9 subcharts">
+
+        <!-- main grid + axis -->
+        <g stroke="#EDF1F4" stroke-width="1">
+          <line x1="2" y1="21.5" x2="288" y2="21.5"></line>
+          <line x1="2" y1="75.3" x2="288" y2="75.3"></line>
+          <line x1="2" y1="129.2" x2="288" y2="129.2"></line>
+          <line x1="2" y1="183.1" x2="288" y2="183.1"></line>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#8A97A3">
+          <text x="294" y="25">1.08680</text><text x="294" y="79">1.08600</text>
+          <text x="294" y="133">1.08520</text><text x="294" y="187">1.08440</text>
+        </g>
+
+        <!-- candles -->
+        <g stroke-width="1.2">
+          <line x1="6" y1="172.3" x2="6" y2="185.8" stroke="#2E9E6B"></line><rect x="2" y="175" width="8" height="6.7" fill="#2E9E6B"></rect>
+          <line x1="20" y1="168.3" x2="20" y2="179" stroke="#2E9E6B"></line><rect x="16" y="170.9" width="8" height="4" fill="#2E9E6B"></rect>
+          <line x1="34" y1="165.6" x2="34" y2="176.3" stroke="#D32F2F"></line><rect x="30" y="170.9" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="48" y1="166.9" x2="48" y2="177.7" stroke="#2E9E6B"></line><rect x="44" y="168.3" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="62" y1="158.8" x2="62" y2="170.9" stroke="#2E9E6B"></line><rect x="58" y="161.5" width="8" height="6.7" fill="#2E9E6B"></rect>
+          <line x1="76" y1="156.1" x2="76" y2="165.6" stroke="#D32F2F"></line><rect x="72" y="161.5" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="90" y1="157.5" x2="90" y2="168.3" stroke="#2E9E6B"></line><rect x="86" y="158.8" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="104" y1="150.7" x2="104" y2="161.5" stroke="#2E9E6B"></line><rect x="100" y="153.4" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="118" y1="148" x2="118" y2="157.5" stroke="#D32F2F"></line><rect x="114" y="153.4" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="132" y1="149.4" x2="132" y2="160.2" stroke="#2E9E6B"></line><rect x="128" y="150.7" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="146" y1="142.7" x2="146" y2="153.4" stroke="#2E9E6B"></line><rect x="142" y="145.4" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="160" y1="140" x2="160" y2="149.4" stroke="#D32F2F"></line><rect x="156" y="145.4" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="174" y1="141.3" x2="174" y2="152.1" stroke="#2E9E6B"></line><rect x="170" y="142.7" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="188" y1="134.6" x2="188" y2="145.4" stroke="#2E9E6B"></line><rect x="184" y="137.3" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="202" y1="131.9" x2="202" y2="141.3" stroke="#D32F2F"></line><rect x="198" y="137.3" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="216" y1="133.2" x2="216" y2="144" stroke="#2E9E6B"></line><rect x="212" y="134.6" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="230" y1="126.5" x2="230" y2="137.3" stroke="#2E9E6B"></line><rect x="226" y="129.2" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="244" y1="123.8" x2="244" y2="133.2" stroke="#D32F2F"></line><rect x="240" y="129.2" width="8" height="2.7" fill="#D32F2F"></rect>
+          <line x1="258" y1="125.2" x2="258" y2="135.9" stroke="#2E9E6B"></line><rect x="254" y="126.5" width="8" height="5.4" fill="#2E9E6B"></rect>
+          <line x1="272" y1="119.8" x2="272" y2="130.6" stroke="#2E9E6B"></line><rect x="268" y="121.1" width="8" height="5.4" fill="#2E9E6B"></rect>
+        </g>
+
+        <!-- open position -->
+        <line x1="2" y1="153.4" x2="288" y2="153.4" stroke="#1565C0" stroke-width="1" stroke-dasharray="3 3"></line>
+        <rect x="4" y="145.4" width="128" height="16" fill="#E3EEF9" stroke="#1565C0" stroke-width="0.8"></rect>
+        <text x="9" y="157" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="#1565C0">Buy 0.10 at 1.08484</text>
+
+        <!-- stacked bid / last / ask tags -->
+        <rect x="288" y="106" width="66" height="15" fill="#1565C0"></rect>
+        <text x="292" y="117" font-family="IBM Plex Mono, monospace" font-size="10" fill="#FFFFFF">1.08530</text>
+        <rect x="288" y="121" width="66" height="15" fill="#14181D"></rect>
+        <text x="292" y="132" font-family="IBM Plex Mono, monospace" font-size="10" fill="#FFFFFF">1.08532</text>
+        <rect x="288" y="136" width="66" height="15" fill="#D32F2F"></rect>
+        <text x="292" y="147" font-family="IBM Plex Mono, monospace" font-size="10" fill="#FFFFFF">1.08534</text>
+
+        <line x1="0" y1="212" x2="356" y2="212" stroke="#E4E9ED" stroke-width="1"></line>
+
+        <!-- RSI 14 -->
+        <text x="4" y="230" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6672">RSI 14</text>
+        <g stroke="#EDF1F4" stroke-width="1" stroke-dasharray="3 3">
+          <line x1="2" y1="267" x2="288" y2="267"></line>
+          <line x1="2" y1="303" x2="288" y2="303"></line>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="9" fill="#8A97A3">
+          <text x="294" y="270">70</text><text x="294" y="306">30</text>
+        </g>
+        <polyline fill="none" stroke="#8E63C4" stroke-width="1.4"
+          points="6,289.5 20,283.2 34,286.8 48,280.5 62,274.2 76,277.8 90,272.4 104,268.8 118,273.3 132,269.7 146,265.2 160,268.8 174,266.1 188,263.4 202,267 216,264.3 230,261.6 244,265.2 258,263.4 272,260.7"></polyline>
+
+        <line x1="0" y1="342" x2="356" y2="342" stroke="#E4E9ED" stroke-width="1"></line>
+
+        <!-- MACD 12 26 close 9 -->
+        <text x="4" y="360" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6672">MACD 12 26 close 9</text>
+        <line x1="2" y1="430" x2="288" y2="430" stroke="#DDE3E8" stroke-width="1"></line>
+        <g font-family="IBM Plex Mono, monospace" font-size="9" fill="#8A97A3">
+          <text x="294" y="386">0.0005</text><text x="294" y="433">0.0000</text><text x="294" y="470">&minus;0.0005</text>
+        </g>
+        <g fill="#9EC5E8">
+          <rect x="2" y="430" width="8" height="8"></rect><rect x="16" y="430" width="8" height="6"></rect>
+          <rect x="30" y="430" width="8" height="7"></rect><rect x="44" y="430" width="8" height="4"></rect>
+          <rect x="58" y="430" width="8" height="2"></rect><rect x="72" y="430" width="8" height="3"></rect>
+          <rect x="86" y="430" width="8" height="1"></rect><rect x="100" y="428" width="8" height="2"></rect>
+          <rect x="114" y="429" width="8" height="1"></rect><rect x="128" y="427" width="8" height="3"></rect>
+          <rect x="142" y="425" width="8" height="5"></rect><rect x="156" y="426" width="8" height="4"></rect>
+          <rect x="170" y="424" width="8" height="6"></rect><rect x="184" y="422" width="8" height="8"></rect>
+          <rect x="198" y="424" width="8" height="6"></rect><rect x="212" y="423" width="8" height="7"></rect>
+          <rect x="226" y="421" width="8" height="9"></rect><rect x="240" y="423" width="8" height="7"></rect>
+          <rect x="254" y="422" width="8" height="8"></rect><rect x="268" y="420" width="8" height="10"></rect>
+        </g>
+        <polyline fill="none" stroke="#1565C0" stroke-width="1.3"
+          points="6,445 20,443 34,442 48,440 62,437 76,438 90,436 104,433 118,434 132,432 146,429 160,430 174,428 188,426 202,427 216,425 230,423 244,424 258,423 272,421"></polyline>
+        <polyline fill="none" stroke="#D32F2F" stroke-width="1.3"
+          points="6,448 20,447 34,446 48,444 62,442 76,441 90,440 104,438 118,437 132,435 146,434 160,433 174,431 188,430 202,429 216,428 230,427 244,426 258,425 272,424"></polyline>
+
+        <g font-family="IBM Plex Mono, monospace" font-size="9" fill="#8A97A3" text-anchor="middle">
+          <text x="34" y="492">10:00</text><text x="146" y="492">10:40</text><text x="258" y="492">11:20</text>
+        </g>
+        <line x1="2" y1="478" x2="288" y2="478" stroke="#E4E9ED" stroke-width="1"></line>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Range strip -->
+  <div style="height: 36px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-top: 1px solid #E4E9ED; border-bottom: 1px solid #E4E9ED;">
+    <div style="display: flex; align-items: center; gap: 5px;">
+      <span style="font-size: 12px; color: #5A6672;">Date range</span>
+      <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="#8A97A3" stroke-width="1.4"><path d="M1.5 3.5 L5 7 L8.5 3.5"></path></svg>
+    </div>
+    <span class="m dim" style="font-size: 11px;">11:42:07 (UTC)</span>
+    <span class="m" style="font-size: 11px; color: #1565C0;">auto</span>
+  </div>
+
+  <!-- Deal footer: sell, volume stepper, buy -->
+  <div style="height: 82px; flex: none; display: flex; flex-direction: column; gap: 0; padding: 8px 10px 10px; background: #F7F9FA; border-bottom: 1px solid #E4E9ED;">
+    <div style="display: flex; align-items: stretch; gap: 8px;">
+      <div style="flex-grow: 1; height: 46px; background: #1565C0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <span style="font-size: 9px; letter-spacing: 0.14em; color: #C5DCF2; font-family: 'IBM Plex Mono', monospace;">BUY</span>
+        <span class="m" style="font-size: 18px; font-weight: 500; color: #FFFFFF; line-height: 1.1;">1.0853<span style="font-size: 12px; vertical-align: super;">2</span></span>
+      </div>
+      <div style="width: 116px; display: flex; align-items: stretch; border: 1px solid #C9D2DA; background: #FFFFFF;">
+        <div style="width: 34px; display: flex; align-items: center; justify-content: center; border-right: 1px solid #E4E9ED; font-size: 18px; color: #5A6672;">&minus;</div>
+        <div class="m" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; font-size: 15px;">1.00</div>
+        <div style="width: 34px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #E4E9ED; font-size: 18px; color: #5A6672;">+</div>
+      </div>
+      <div style="flex-grow: 1; height: 46px; background: #D32F2F; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <span style="font-size: 9px; letter-spacing: 0.14em; color: #F6CFCE; font-family: 'IBM Plex Mono', monospace;">SELL</span>
+        <span class="m" style="font-size: 18px; font-weight: 500; color: #FFFFFF; line-height: 1.1;">1.0853<span style="font-size: 12px; vertical-align: super;">0</span></span>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; padding-top: 7px;">
+      <span class="cap">Margin 1,085.32</span>
+      <span class="cap">Spread 0.2</span>
+      <span class="cap">Comm 7.00</span>
+    </div>
+  </div>
+
+  <!-- Bottom navigation -->
+  <div style="height: 62px; flex: none; display: flex; align-items: stretch; background: #FFFFFF; border-top: 1px solid #E4E9ED;">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h9"></path></svg>
+      <span class="cap" style="font-size: 9px; letter-spacing: 0.05em;">Quotes</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#1565C0" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15 L7 9 L11 12 L17 4"></path></svg>
+      <span class="cap" style="font-size: 9px; letter-spacing: 0.05em; color: #1565C0;">Chart</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="4" width="14" height="12"></rect><path d="M3 8h14"></path></svg>
+      <span class="cap" style="font-size: 9px; letter-spacing: 0.05em;">Trade</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"></circle><path d="M10 6v4l3 2"></path></svg>
+      <span class="cap" style="font-size: 9px; letter-spacing: 0.05em;">History</span>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#8A97A3" stroke-width="1.5" stroke-linecap="round"><path d="M4 12l4-4 3 3 5-6"></path><path d="M3 17h14"></path></svg>
+      <span class="cap" style="font-size: 9px; letter-spacing: 0.05em;">Net trade</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#1565C0","options":["#1565C0","#E0A040","#2E9E6B","#8E63C4"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#1565C0' };
+  }
+}
+</script>
+</body>
+</html>

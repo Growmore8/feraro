@@ -1,0 +1,241 @@
+/* Styles for the shared primitives. Every colour comes from a token. */
+
+.panel {
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-grow {
+  flex-grow: 1;
+}
+
+.panel-head {
+  height: var(--header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Panel titles are the accent blue, as they are in a Windows dock. */
+.panel-head > .cap:first-child {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.panel-meta {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+/* ── Table ── */
+
+.table-wrap {
+  overflow: auto;
+  min-height: 0;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table th {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-2);
+  font-weight: 400;
+  text-align: left;
+  padding: 4px 9px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.table tbody tr.row-active {
+  background: var(--row-active);
+}
+
+.table .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.table-empty {
+  padding: 16px 10px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.sym {
+  font-weight: 600;
+}
+
+/* ── Pill ── */
+
+.pill {
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: capitalize;
+  padding: 1px 6px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.pill-buy {
+  background: var(--buy-wash);
+  color: var(--buy);
+}
+.pill-sell {
+  background: var(--sell-wash);
+  color: var(--sell);
+}
+.pill-ok {
+  background: var(--profit-wash);
+  color: var(--profit);
+}
+.pill-warn {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+.pill-danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.pill-credit {
+  background: var(--accent-wash);
+  color: var(--credit);
+}
+.pill-neutral {
+  background: var(--track);
+  color: var(--ink-2);
+}
+
+/* ── Button ── */
+
+.btn {
+  font-family: var(--sans);
+  font-size: 11px;
+  padding: 3px 10px;
+  border: 1px solid var(--rule-strong);
+  background: var(--chrome);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 2px;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.btn:disabled {
+  color: var(--ink-4);
+  border-color: var(--rule);
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.btn-primary:hover:not(:disabled) {
+  color: var(--accent-ink);
+  filter: brightness(1.08);
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: var(--danger-wash);
+}
+
+.btn-confirm {
+  color: var(--profit);
+  border-color: var(--profit-wash);
+}
+
+/* ── Field ── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-box {
+  height: var(--control-h);
+  border: 1px solid var(--rule-strong);
+  background: var(--ground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.field-readonly {
+  border-color: var(--rule);
+  color: var(--ink-3);
+}
+
+.field-edited {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.field-required {
+  border-color: var(--danger);
+}
+
+.field-strike {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+/* ── Readout ── */
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+
+/* The line a blotter adds up to.
+   Heavier than a row and lighter than a heading: it is a fact about the
+   rows above it, not another one of them. */
+
+.table tfoot .table-total td {
+  position: sticky;
+  bottom: 0;
+  padding: 4px 8px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--chrome);
+  border-top: 1px solid var(--rule-strong);
+}

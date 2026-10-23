@@ -1,0 +1,11 @@
+[package]
+name = "domain"
+description = "Instruments, accounts, orders and the engine event vocabulary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+money.workspace = true

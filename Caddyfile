@@ -1,0 +1,63 @@
+# The edge.
+#
+# Caddy is here for one reason above all others: it gets and renews a
+# certificate on its own. The platform's single worst gap was a password
+# crossing the network in clear, and the fix must not be a thing somebody
+# remembers to do again in ninety days.
+#
+# Set FERARO_DOMAIN to the hostname this serves. With a real domain pointed
+# at the host, Caddy fetches a Let's Encrypt certificate on first boot; with
+# the default it serves a local certificate instead, which is right for a
+# laptop and wrong for anything else.
+
+{
+	# A deployment should say where to shout when a certificate fails.
+	email {$FERARO_ACME_EMAIL:admin@example.com}
+}
+
+{$FERARO_DOMAIN:localhost} {
+	encode gzip zstd
+
+	# The browser socket. Long-lived by nature, so the read timeout has to
+	# be generous: a quiet market is not a dead connection.
+	handle /ws* {
+		uri strip_prefix /ws
+		reverse_proxy gateway:8081
+	}
+
+	# The health endpoint is the supervisor's, not the public's. It says
+	# how long the process has been up and when it last saw a price, which
+	# is more than a stranger needs to know.
+	handle /health {
+		@local remote_ip private_ranges
+		handle @local {
+			reverse_proxy gateway:8082
+		}
+		respond 404
+	}
+
+	# Everything else is the terminal: a single-page app, so any path that
+	# is not a file is the app itself.
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		# The terminal is the only thing that should ever frame it, and
+		# nothing should sniff a type it was not given.
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		# A year, and only once a deployment is certain of its hostname:
+		# HSTS is hard to take back.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

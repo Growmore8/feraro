@@ -1,0 +1,776 @@
+.theme-toggle {
+  position: fixed;
+  right: 10px;
+  bottom: 34px;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+
+/* The deal ticket over the chart.
+
+   It sits on the candles, so it has to read against black without becoming
+   the brightest thing on screen — the price is. Hence a deep blue that is
+   plainly a button but darker than the chart's own greens and reds, and a
+   panel behind it dark enough that the ticket is one object rather than
+   four floating ones.
+
+   Sell and buy take the same two colours they take everywhere else in this
+   platform — blue for the bid side, red for the ask side — because one
+   direction convention across a screen is worth more than matching any
+   reference. The arrows are deliberately colourless: they mean "down" and
+   "up from here", not buy and sell, and colouring them would put a second
+   meaning on the only two colours that already have one. */
+
+.dt {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: rgb(18 24 31 / 92%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 4px;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 45%);
+}
+
+.dt-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 112px;
+  padding: 6px 13px;
+  font: inherit;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dt-sell {
+  background: linear-gradient(180deg, var(--dt-sell-lift), var(--dt-sell));
+}
+
+.dt-buy {
+  background: linear-gradient(180deg, var(--dt-buy-lift), var(--dt-buy));
+}
+
+.dt-price:hover:not(:disabled) {
+  filter: brightness(1.14);
+}
+
+.dt-price:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* Pointed away from the market: this will rest an order, not deal at the
+   touch. It keeps its side's colour — it is still a sell or a buy — but goes
+   flat and outlined, so "about to rest" and "at the touch" are told apart
+   without spending a third colour on it. */
+.dt-price.dt-resting {
+  filter: saturate(0.72) brightness(0.82);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 55%);
+}
+
+.dt-price:disabled,
+.dt-arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dt-px {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dt-way {
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+/* The arrows: which way the price moves, not which way it trades. */
+.dt-arrow {
+  width: 25px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dt-arrow-down,
+.dt-arrow-up {
+  color: rgb(255 255 255 / 78%);
+  background: rgb(255 255 255 / 11%);
+}
+
+.dt-arrow-down:hover:not(:disabled),
+.dt-arrow-up:hover:not(:disabled) {
+  color: #fff;
+  background: rgb(255 255 255 / 20%);
+}
+
+.dt-arrow:hover:not(:disabled) {
+  filter: brightness(1.16);
+}
+
+.dt-arrow:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.dt-size {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: rgb(255 255 255 / 96%);
+  border-radius: 3px;
+}
+
+.dt-input {
+  width: 58px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+  color: #16202a;
+  background: transparent;
+  border: none;
+}
+
+.dt-input:focus-visible {
+  outline: 2px solid var(--dt-price);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+.dt-sizes {
+  width: 17px;
+  padding: 0;
+  font: inherit;
+  font-size: 9px;
+  color: #5a6672;
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgb(0 0 0 / 14%);
+  cursor: pointer;
+}
+
+.dt-sizes:hover {
+  color: #16202a;
+}
+
+.dt-catch {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+}
+
+.dt-sizelist {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: 2px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 40%);
+}
+
+.dt-sizelist button {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  text-align: right;
+  color: #16202a;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.dt-sizelist button:hover {
+  background: #e8eef5;
+}
+
+.dt-on {
+  align-self: center;
+  padding: 0 9px;
+  font-size: 10px;
+  color: rgb(255 255 255 / 55%);
+}
+
+.dt-refuse {
+  color: #ffc46b;
+}
+
+.dt-reset {
+  padding: 0;
+  font: inherit;
+  font-size: 10px;
+  color: #7cc0ff;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.dt-reset:hover {
+  text-decoration: underline;
+}
+
+.dt-fold {
+  width: 20px;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: rgb(255 255 255 / 55%);
+  background: rgb(255 255 255 / 10%);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dt-fold:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 18%);
+}
+
+.dt-reopen {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 3;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 80%);
+  background: rgb(18 24 31 / 92%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dt-reopen:hover {
+  color: #fff;
+  border-color: rgb(255 255 255 / 30%);
+}
+
+/* The market watch's search box and its folding groups. */
+
+.mw-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.mw-search {
+  flex: none;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mw-find {
+  width: 100%;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+}
+
+.mw-find:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mw-group td {
+  padding: 4px 8px 2px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mw-caret {
+  display: inline-block;
+  width: 11px;
+  color: var(--ink-4);
+}
+
+.mw-count {
+  margin-left: 6px;
+  color: var(--ink-4);
+  opacity: 0.7;
+}
+
+
+/* The draggable edge between two panes.
+   A hairline to look at, a comfortable target to hit. */
+
+.split {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--rule);
+}
+
+.split-vertical {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.split-horizontal {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.split-bar {
+  background: var(--rule-strong);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.split-vertical .split-bar {
+  width: 1px;
+  height: 28px;
+}
+
+.split-horizontal .split-bar {
+  width: 28px;
+  height: 1px;
+}
+
+.split:hover .split-bar,
+.split:focus-visible .split-bar {
+  opacity: 1;
+}
+
+.split:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* The right-click menu.
+
+   It takes the screen's own palette rather than a dark one of its own: a
+   menu that arrives in a different theme from the panel it was opened over
+   reads as something else's window. Tight, too — it is read in a glance
+   while the pointer is already moving, so the rows are close and the type
+   is the same size as the tables behind it. */
+
+.ctx {
+  position: fixed;
+  z-index: 60;
+  width: 228px;
+  padding: 0 0 3px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+}
+
+/* ── Whose menu this is ── */
+
+.ctx-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+}
+
+.ctx-disc {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.ctx-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ctx-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.ctx-pill {
+  padding: 0 5px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+}
+
+.ctx-pill-ok {
+  color: var(--profit);
+  background: var(--profit-wash);
+}
+
+.ctx-pill-warn {
+  color: var(--warn);
+  background: var(--accent-wash);
+}
+
+.ctx-pill-bad {
+  color: var(--loss);
+  background: var(--danger-wash);
+}
+
+.ctx-sub {
+  font-size: 10px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Lines ── */
+
+.ctx-body {
+  padding: 3px;
+}
+
+.ctx-nest {
+  position: relative;
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 7px;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ctx-item:hover:not(:disabled) {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.ctx-item:hover:not(:disabled) .ctx-icon,
+.ctx-item:hover:not(:disabled) .ctx-hint,
+.ctx-item:hover:not(:disabled) .ctx-chev {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.ctx-item:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+
+.ctx-danger:not(:disabled) {
+  color: var(--loss);
+}
+
+.ctx-danger:hover:not(:disabled) {
+  color: #fff;
+  background: var(--loss);
+}
+
+.ctx-icon {
+  flex: none;
+  width: 12px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--ink-4);
+}
+
+.ctx-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-hint {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--ink-4);
+}
+
+.ctx-badge {
+  flex: none;
+  padding: 0 5px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+
+.ctx-badge-ok {
+  color: var(--profit);
+  background: var(--profit-wash);
+}
+
+.ctx-badge-warn {
+  color: var(--warn);
+  background: var(--accent-wash);
+}
+
+.ctx-badge-bad {
+  color: var(--loss);
+  background: var(--danger-wash);
+}
+
+.ctx-chev {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+.ctx-rule {
+  height: 1px;
+  margin: 3px 2px;
+  background: var(--rule);
+}
+
+.ctx-heading {
+  padding: 6px 7px 2px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* ── Chips ──
+   For the small set of switches where a grid reads faster than more lines. */
+
+.ctx-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 0 2px 2px;
+}
+
+.ctx-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 4px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ctx-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ctx-chip-danger {
+  color: var(--loss);
+  background: var(--danger-wash);
+  border-color: color-mix(in srgb, var(--loss) 34%, transparent);
+}
+
+.ctx-chip-warn {
+  color: var(--warn);
+  background: var(--accent-wash);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
+
+.ctx-chip-ok {
+  color: var(--profit);
+  background: var(--profit-wash);
+  border-color: color-mix(in srgb, var(--profit) 34%, transparent);
+}
+
+.ctx-chip-plain {
+  color: var(--ink-2);
+  background: var(--chrome);
+  border-color: var(--rule);
+}
+
+.ctx-chip:hover:not(:disabled) {
+  border-color: currentColor;
+}
+
+/* ── A submenu, opening to the side ── */
+
+.ctx-submenu {
+  position: absolute;
+  top: -3px;
+  left: calc(100% + 2px);
+  z-index: 61;
+  width: 214px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+}
+
+/* Near the right edge there is no room to the right, so it opens left. */
+@media (max-width: 1400px) {
+  .ctx-submenu {
+    left: auto;
+    right: calc(100% + 2px);
+  }
+}
+
+/* The small dialog an action opens when it needs a figure. */
+
+.ask-back {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 38%);
+}
+
+.ask {
+  width: min(380px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 40%);
+}
+
+.ask-head {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+}
+
+.ask-note {
+  margin: 0;
+  padding: 8px 12px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.ask-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.ask-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ask-input {
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+}
+
+.ask-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ask-feet {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.ask-go {
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+}
+
+.ask-go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ask-danger {
+  color: #fff;
+  background: var(--loss);
+}
+
+/* A read-only panel. Wider than Ask, because it is showing a table rather
+   than collecting a figure, and it scrolls rather than growing. */
+
+.sheet {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.sheet-body {
+  max-height: min(60vh, 440px);
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.sheet-trial {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}

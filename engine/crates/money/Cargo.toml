@@ -1,0 +1,10 @@
+[package]
+name = "money"
+description = "Fixed-point price, quantity and money primitives"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

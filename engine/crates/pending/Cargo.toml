@@ -1,0 +1,12 @@
+[package]
+name = "pending"
+description = "Resting orders and the price conditions that activate them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+domain.workspace = true
+money.workspace = true

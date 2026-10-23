@@ -1,0 +1,295 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0E1418; color: #E4EBF0; font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+    a { color: #E0A040; text-decoration: none; } a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A; }
+    .ph { display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 11px; border-bottom: 1px solid #26333B; background: #121A20; }
+    table { border-collapse: collapse; width: 100%; }
+    th { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: #677D8A; font-weight: 400; text-align: left; padding: 5px 10px; border-bottom: 1px solid #26333B; background: #121A20; }
+    td { padding: 5px 10px; border-bottom: 1px solid #1B252C; }
+    .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+    .up { color: #3FBF8F; } .dn { color: #E8635A; } .dim { color: #677D8A; }
+    .pill { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; display: inline-block; }
+    .btn { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.05em; padding: 4px 9px; border: 1px solid #35454F; color: #9DAFBB; display: inline-block; white-space: nowrap; }
+    .fld { height: 32px; border: 1px solid #35454F; background: #0E1418; display: flex; align-items: center; padding: 0 10px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: 13px; }
+    .tab { padding: 0 13px; height: 34px; display: flex; align-items: center; font-size: 11px; color: #9DAFBB; }
+    .op { flex-grow: 1; height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border: 1px solid #26333B; background: #121A20; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0E1418; position: relative; overflow: hidden;">
+
+  <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 16px; background: #121A20; border-bottom: 1px solid #26333B;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15.5 L7 9.5 L11 12 L17 4"></path><path d="M3 17.5 L17 17.5"></path></svg>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.02em;">FERARO</span>
+      <span class="cap" style="padding-top: 2px;">Admin</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <span class="cap">Pending withdrawals <span style="color: #E0A040;">4 &middot; 38,420.00 USD</span></span>
+      <div style="width: 1px; height: 26px; background: #26333B;"></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><span class="m" style="font-size: 11px;">S. Whitfield</span><span class="cap">Administrator</span></div>
+    </div>
+  </div>
+
+  <div style="height: 34px; flex: none; display: flex; align-items: stretch; background: #0E1418; border-bottom: 1px solid #26333B; padding: 0 8px;">
+    <div class="tab">Instruments</div><div class="tab">Groups</div><div class="tab">Accounts</div><div class="tab">Trades</div>
+    <div class="tab" style="color: #E4EBF0; box-shadow: inset 0 -2px 0 0 {{accent}};">Funds</div>
+    <div class="tab">Activity</div><div class="tab">Audit</div>
+  </div>
+
+  <div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: 356px minmax(0, 1fr) 372px; gap: 1px; background: #26333B;">
+
+    <!-- Withdrawal approval queue -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap" style="color: #E0A040;">Awaiting approval</span><span class="m dim" style="font-size: 10px;">4</span></div>
+
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E0A040; padding: 11px 12px; display: flex; flex-direction: column; gap: 7px; background: #191A16;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="m" style="font-size: 12px; font-weight: 500;">#5120</span><span class="dim" style="font-size: 11px;">Ridgeway Capital</span></div>
+          <span class="m" style="font-size: 15px; font-weight: 500;">28,000.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span class="cap">Bank transfer &middot; USD</span><span class="cap">Requested 2 h ago</span>
+        </div>
+        <span class="dim" style="font-size: 11px; line-height: 1.5;">Free margin after: <span class="m up">120,220.00</span>. KYC verified, bank on file since 2024.</span>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #3FBF8F; border-color: #24503E;">Approve</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Decline</span>
+          <span class="btn">Open account</span>
+        </div>
+      </div>
+
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E8635A; padding: 11px 12px; display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="m" style="font-size: 12px; font-weight: 500;">#4471</span><span class="dim" style="font-size: 11px;">A. Okonkwo</span></div>
+          <span class="m" style="font-size: 15px; font-weight: 500;">3,900.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;"><span class="cap">Card refund &middot; USD</span><span class="cap">Requested 5 h ago</span></div>
+        <span class="dn" style="font-size: 11px; line-height: 1.5;">Blocked &mdash; margin level is 58%. Paying this leaves the account below stop-out.</span>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #4A5C68; border-color: #26333B;">Approve</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Decline</span>
+        </div>
+      </div>
+
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #26333B; padding: 11px 12px; display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="m" style="font-size: 12px; font-weight: 500;">#3908</span><span class="dim" style="font-size: 11px;">L. Marchetti</span></div>
+          <span class="m" style="font-size: 15px; font-weight: 500;">4,520.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;"><span class="cap">SEPA &middot; EUR</span><span class="cap">Requested 9 h ago</span></div>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #3FBF8F; border-color: #24503E;">Approve</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Decline</span>
+        </div>
+      </div>
+
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #26333B; padding: 11px 12px; display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="m" style="font-size: 12px; font-weight: 500;">#7742</span><span class="dim" style="font-size: 11px;">D. Ferreira</span></div>
+          <span class="m" style="font-size: 15px; font-weight: 500;">2,000.00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;"><span class="cap">Crypto &middot; USDT</span><span class="cap">Requested 1 d ago</span></div>
+        <div style="display: flex; gap: 6px;">
+          <span class="btn" style="color: #3FBF8F; border-color: #24503E;">Approve</span>
+          <span class="btn" style="color: #E8635A; border-color: #3A2226;">Decline</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Operation form -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap">Manual balance operation</span><span class="cap">Dual control above 10,000</span></div>
+
+      <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 14px;">
+
+        <!-- The four operations, stated plainly -->
+        <div style="display: flex; gap: 8px;">
+          <div class="op" style="border-color: #3FBF8F; background: #12211B;">
+            <span class="cap" style="color: #3FBF8F;">Deposit</span>
+            <span class="dim" style="font-size: 10px;">Real money in</span>
+          </div>
+          <div class="op">
+            <span class="cap">Withdrawal</span><span class="dim" style="font-size: 10px;">Real money out</span>
+          </div>
+          <div class="op" style="border-color: {{accent}}; background: #221C13;">
+            <span class="cap" style="color: {{accent}};">Credit</span>
+            <span class="dim" style="font-size: 10px;">Bonus, non-withdrawable</span>
+          </div>
+          <div class="op">
+            <span class="cap">Debit</span><span class="dim" style="font-size: 10px;">Correction out</span>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span class="cap">Account</span>
+            <div class="fld" style="justify-content: space-between;"><span>1001 &middot; A. Verma &middot; Standard</span><span class="dim" style="font-size: 11px;">USD</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span class="cap">Amount</span>
+            <div class="fld" style="border-color: {{accent}}; font-size: 16px;">500.00</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Value date</span><div class="fld">03.09.2026</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Reference</span><div class="fld">PROMO-Q3-118</div></div>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><span class="cap">Expires</span><div class="fld">31.12.2026</div></div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span class="cap">Reason &middot; shown on the client statement</span>
+          <div style="min-height: 44px; border: 1px solid #35454F; background: #0E1418; padding: 8px 10px; font-size: 12px; line-height: 1.5;">Q3 deposit-match promotion. Counts toward margin; cannot be withdrawn and is removed on the first withdrawal.</div>
+        </div>
+
+        <!-- Double-entry preview -->
+        <div style="border: 1px solid #35454F; background: #121A20;">
+          <div style="padding: 9px 12px; border-bottom: 1px solid #26333B; display: flex; align-items: center; justify-content: space-between;">
+            <span class="cap" style="color: {{accent}};">Ledger postings this will write</span>
+            <span class="cap">Must net to zero</span>
+          </div>
+          <table>
+            <thead><tr><th>Ledger account</th><th>Kind</th><th>Currency</th><th class="n">Amount</th></tr></thead>
+            <tbody>
+              <tr><td class="m">1001</td><td>ClientCash</td><td class="m dim">USD</td><td class="n up">+500.00000</td></tr>
+              <tr><td class="m dim">house</td><td>Bonus</td><td class="m dim">USD</td><td class="n dn">&minus;500.00000</td></tr>
+              <tr style="background: #121A20;"><td colspan="3" class="cap" style="border-bottom: none;">Residual</td><td class="n up" style="border-bottom: none; font-weight: 500;">0.00000</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="btn" style="color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500; padding: 8px 18px;">Apply credit of 500.00 USD</span>
+          <span class="btn" style="padding: 8px 14px;">Cancel</span>
+          <div style="flex-grow: 1;"></div>
+          <span class="cap">Writes at seq 4,182,101</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account snapshot -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap">Account 1001 &middot; A. Verma</span><span class="pill" style="background: #122C23; color: #3FBF8F;">KYC verified</span></div>
+
+      <div style="padding: 12px; display: flex; flex-direction: column; gap: 1px; background: #26333B; margin: 12px; border: 1px solid #26333B;">
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Balance</span><span class="m" style="font-size: 16px;">25,000.00</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Credit &middot; bonus</span><span class="m" style="font-size: 16px; color: #B98CE0;">500.00</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Floating P&amp;L</span><span class="m up" style="font-size: 16px;">+159.00</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Equity</span><span class="m" style="font-size: 16px; font-weight: 500;">25,659.00</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Used margin</span><span class="m" style="font-size: 16px;">1,085.32</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Free margin</span><span class="m" style="font-size: 16px;">24,573.68</span></div>
+        <div style="background: #121A20; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;"><span class="cap">Margin level</span><span class="m up" style="font-size: 16px; font-weight: 500;">2,364%</span></div>
+      </div>
+
+      <div style="padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px;">
+        <span class="cap">Lifetime</span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="border: 1px solid #26333B; padding: 9px 11px; display: flex; flex-direction: column; gap: 2px;"><span class="cap">Deposited</span><span class="m" style="font-size: 14px;">62,500.00</span></div>
+          <div style="border: 1px solid #26333B; padding: 9px 11px; display: flex; flex-direction: column; gap: 2px;"><span class="cap">Withdrawn</span><span class="m" style="font-size: 14px;">41,200.00</span></div>
+          <div style="border: 1px solid #26333B; padding: 9px 11px; display: flex; flex-direction: column; gap: 2px;"><span class="cap">Net trading</span><span class="m up" style="font-size: 14px;">+3,700.00</span></div>
+          <div style="border: 1px solid #26333B; padding: 9px 11px; display: flex; flex-direction: column; gap: 2px;"><span class="cap">Commission paid</span><span class="m" style="font-size: 14px;">1,842.00</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction history -->
+  <div style="flex: none; height: 232px; background: #151D23; border-top: 1px solid #26333B; display: flex; flex-direction: column;">
+    <div class="ph">
+      <span class="cap">Transaction history &middot; account 1001</span>
+      <div style="display: flex; gap: 6px;"><span class="btn">All accounts</span><span class="btn">Export CSV</span></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th style="width: 118px;">Timestamp</th><th style="width: 92px;">Seq</th><th style="width: 96px;">Type</th><th class="n">Amount</th><th class="n">Balance after</th><th>Method</th><th>Reference</th><th>Reason</th><th>Actor</th><th style="width: 82px;">Status</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background: #1B252C;">
+          <td class="m dim">03.09 11:46:10</td><td class="m dim">pending</td>
+          <td><span class="pill" style="background: #2A2118; color: #E0A040;">Credit</span></td>
+          <td class="n" style="color: #B98CE0;">+500.00</td><td class="n dim">25,000.00</td><td class="dim">Bonus</td><td class="m dim">PROMO-Q3-118</td>
+          <td class="dim">Q3 deposit-match promotion</td><td class="dim">S. Whitfield</td>
+          <td><span class="pill" style="background: #2E2513; color: #E0A040;">Queued</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">03.09 09:28:44</td><td class="m dim">4,174,220</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Deposit</span></td>
+          <td class="n up">+5,000.00</td><td class="n dim">25,000.00</td><td class="dim">Card &middot; Visa &bull;&bull;42</td><td class="m dim">DEP-88412</td>
+          <td class="dim">&mdash;</td><td class="dim">System</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Cleared</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">01.09 14:02:19</td><td class="m dim">4,088,510</td>
+          <td><span class="pill" style="background: #1F2A32; color: #9DAFBB;">Withdrawal</span></td>
+          <td class="n dn">&minus;2,000.00</td><td class="n dim">20,000.00</td><td class="dim">Bank transfer</td><td class="m dim">WDR-44190</td>
+          <td class="dim">&mdash;</td><td class="dim">A. Fenwick</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Paid</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">28.08 10:11:03</td><td class="m dim">3,904,882</td>
+          <td><span class="pill" style="background: #301A17; color: #E8635A;">Debit</span></td>
+          <td class="n dn">&minus;140.00</td><td class="n dim">22,000.00</td><td class="dim">Correction</td><td class="m dim">ADJ-1180</td>
+          <td class="dim">Swap double-charged on 27.08 rollover</td><td class="dim">S. Whitfield</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Applied</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">22.08 08:44:55</td><td class="m dim">3,610,447</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Deposit</span></td>
+          <td class="n up">+12,000.00</td><td class="n dim">22,140.00</td><td class="dim">Bank transfer</td><td class="m dim">DEP-81006</td>
+          <td class="dim">&mdash;</td><td class="dim">System</td>
+          <td><span class="pill" style="background: #122C23; color: #3FBF8F;">Cleared</span></td>
+        </tr>
+        <tr>
+          <td class="m dim">19.08 17:30:12</td><td class="m dim">3,488,201</td>
+          <td><span class="pill" style="background: #2A2118; color: #E0A040;">Credit</span></td>
+          <td class="n" style="color: #B98CE0;">+250.00</td><td class="n dim">10,140.00</td><td class="dim">Bonus</td><td class="m dim">PROMO-Q3-044</td>
+          <td class="dim">Referral bonus &middot; expired 31.08</td><td class="dim">S. Whitfield</td>
+          <td><span class="pill" style="background: #1F2A32; color: #677D8A;">Expired</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Toast -->
+  <div style="position: absolute; right: 18px; top: 100px; width: 328px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="background: #18242B; border: 1px solid #35454F; border-left: 3px solid #3FBF8F; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#3FBF8F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M3 8.5 L6.5 12 L13 4"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Withdrawal approved</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;"><span class="m" style="color: #9DAFBB;">28,000.00 USD</span> to #5120 &middot; sent to the payment provider.</span>
+      </div>
+      <span class="cap" style="flex: none;">now</span>
+    </div>
+    <div style="background: #1E1A15; border: 1px solid #35454F; border-left: 3px solid #E8635A; box-shadow: 0 10px 26px rgba(0,0,0,0.5); padding: 10px 12px; display: flex; gap: 10px;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#E8635A" stroke-width="1.7" stroke-linecap="round" style="flex: none; margin-top: 1px;"><path d="M8 2 L15 14 H1 Z"></path><path d="M8 6.5v3.5M8 12h0.01"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <span style="font-size: 12px; font-weight: 600;">Withdrawal blocked</span>
+        <span class="dim" style="font-size: 11px; line-height: 1.45;">#4471 is at 58% margin level. Paying 3,900.00 would force a stop-out.</span>
+      </div>
+      <span class="cap" style="flex: none;">4m</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#E0A040' }; }
+}
+</script>
+</body>
+</html>

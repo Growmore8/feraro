@@ -1,0 +1,96 @@
+# The platform, as it runs on a server.
+#
+# Three containers: the engine behind its socket, the built terminals, and
+# the proxy that terminates TLS and is the only thing with a port on the
+# internet. The gateway deliberately publishes nothing — it is reachable
+# from Caddy and from nowhere else.
+#
+#   cp gateway/.env.example gateway/.env   # feed keys, optional
+#   FERARO_DOMAIN=demo.example.com docker compose up -d
+#
+# On first boot the gateway prints two passwords once and never again. Read
+# them with `docker compose logs gateway` and store them somewhere real.
+
+name: feraro
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: gateway/.env
+        required: false
+    environment:
+      FERARO_BIND: 0.0.0.0:8081
+      FERARO_HEALTH_BIND: 0.0.0.0:8082
+      FERARO_JOURNAL: /app/journal
+      FERARO_USERS: /app/journal/users.json
+    volumes:
+      # The journal is the database. This volume IS the platform's state:
+      # back it up, and never delete it to "start clean" on a server that
+      # holds anybody's account.
+      - journal:/app/journal
+    # No `ports`. Nothing reaches this except Caddy, over the internal
+    # network — a gateway speaking plain ws:// must not be addressable.
+    expose:
+      - "8081"
+      - "8082"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/gateway", "--healthcheck"]
+      interval: 20s
+      timeout: 4s
+      retries: 3
+      start_period: 40s
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    # Nothing to run: the image exists to hold the built assets, which Caddy
+    # serves from a shared volume.
+    command: ["sh", "-c", "cp -r /srv/web/. /shared/ && echo 'web: assets published' && sleep infinity"]
+    restart: unless-stopped
+    volumes:
+      - assets:/shared
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+      gateway:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      FERARO_DOMAIN: ${FERARO_DOMAIN:-localhost}
+      FERARO_ACME_EMAIL: ${FERARO_ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - assets:/srv/web:ro
+      # Certificates live here. Losing this volume means asking Let's
+      # Encrypt for a new certificate, and they rate-limit that.
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  journal:
+  assets:
+  caddy-data:
+  caddy-config:

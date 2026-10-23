@@ -1,0 +1,11 @@
+/* What the shared chart pane owns.
+
+   The rest of the chart's look lives with whichever terminal is drawing it,
+   but the overlay slot is this component's own promise: anything handed to
+   `overlay` is positioned against the candles. That needs a positioning
+   context here, not in a terminal's stylesheet, or the ticket anchors to
+   whatever ancestor happens to be relative and lands on the toolbar. */
+
+.chart-area {
+  position: relative;
+}

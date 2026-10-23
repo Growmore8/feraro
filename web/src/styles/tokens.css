@@ -1,0 +1,294 @@
+/*
+ * Feraro terminal tokens.
+ *
+ * The default palette follows the FX terminal convention traders arriving from
+ * VertexFX and MT4 already have in their hands: light window chrome, a black
+ * chart, green-tinted quote rows, blue panel titles.
+ *
+ * Two decisions here are load-bearing and easy to get wrong:
+ *
+ * 1. THE CHART IS ALWAYS DARK, in both themes. It is not a bug that
+ *    --chart-bg does not follow --ground. Candles and wicks need maximum
+ *    contrast against a neutral field, and every desk platform lands on black
+ *    for the same reason. The --chart-* tokens are a separate set on purpose.
+ *
+ * 2. SELL IS BLUE AND BUY IS RED, matching the reference platform. This is the
+ *    opposite of MT4. It is one token pair — swap --buy and --sell below to
+ *    flip the whole product — but it must never differ between the desktop,
+ *    mobile and dealer screens, so it is defined once, here, and nowhere else.
+ *
+ * --accent is never a data colour. It marks what you can act on.
+ */
+
+:root {
+  /* Window chrome */
+  --ground: #f0f0f0;
+  --chrome: #e9ecef;
+  --panel: #ffffff;
+  --row-active: #fff4bf;
+  --row-tint: #e4f2de;
+  --rule: #c8cdd2;
+  --rule-strong: #a6adb4;
+  --track: #e2e6ea;
+
+  --ink: #1a1d20;
+  --ink-2: #454b52;
+  --ink-3: #6b747c;
+  --ink-4: #9aa2aa;
+
+  /* The brand.
+     Used on the sign-in screen and nowhere a figure is read: a balance must
+     never share a colour with a logo. */
+  --brand-deep: #2a2a6e;
+  --brand: #5145cd;
+  --brand-lift: #8b72e8;
+  --brand-wash: #e6e3fb;
+  --brand-gold: #d8a33a;
+  --brand-gold-ink: #a97d1d;
+
+  /* The phone.
+     Dark in both themes, like the menu and the ticket: a trading screen held
+     at arm's length in daylight or in bed is read in the dark far more often
+     than not, and a phone app that changes weight with a desktop preference
+     is one nobody set. */
+  --mob-bg: #0f151c;
+  --mob-chrome: #141b24;
+  --mob-card: #18212b;
+  --mob-raise: #222d3a;
+  --mob-rule: #27333f;
+  --mob-ink: #e6edf3;
+  --mob-dim: #8696a6;
+  --mob-accent: #2b3f9e;
+  --mob-accent-soft: #6f8ef5;
+  --mob-gold: #e2b355;
+
+  /* The phone.
+     Dark in both themes, like the menu and the ticket: a trading screen held
+     at arm's length in daylight or in bed is read in the dark far more often
+     than not, and a phone app that changes weight with a desktop preference
+     is one nobody set. */
+  --mob-bg: #0f151c;
+  --mob-chrome: #141b24;
+  --mob-card: #18212b;
+  --mob-raise: #222d3a;
+  --mob-rule: #27333f;
+  --mob-ink: #e6edf3;
+  --mob-dim: #8696a6;
+  --mob-accent: #2b3f9e;
+  --mob-accent-soft: #6f8ef5;
+  --mob-gold: #e2b355;
+
+  /* The deal ticket.
+     It sits on the chart, which is black in both themes, so these are the
+     one set of tokens that do NOT flip: the ticket reads the same whichever
+     palette the rest of the screen is in. The price buttons carry no
+     direction — the (S)/(B) label does that — and the arrows mean down and
+     up from here. */
+  --dt-sell: #0d5cbd;
+  --dt-sell-lift: #1a74dd;
+  --dt-buy: #b32f2f;
+  --dt-buy-lift: #d64545;
+
+  /* Panel titles and primary actions */
+  --accent: #0f6cbd;
+  --accent-ink: #ffffff;
+  --accent-wash: #dceaf6;
+
+  /* Direction — blue sell, red buy, as the reference platform runs it */
+  --buy: #c62828;
+  --buy-wash: #fbe4e4;
+  --sell: #1565c0;
+  --sell-wash: #dfeaf8;
+
+  /* Outcome — a separate question from which way the order faced */
+  --profit: #1b8f3a;
+  --profit-wash: #e3f3e6;
+  --loss: #c62828;
+  --warn: #b26a00;
+  --warn-wash: #fdf0d8;
+  --danger: #c62828;
+  --danger-wash: #fbe4e4;
+  --credit: #6a3fa0;
+
+  /* Chart — dark in every theme, deliberately */
+  --chart-bg: #000000;
+  --chart-grid: #2b2b2b;
+  --chart-axis: #9aa2aa;
+  --chart-ink: #e8e8e8;
+  --candle-up: #00b050;
+  --candle-down: #e04a45;
+  --macd-hist: #2f8fd0;
+  --macd-line: #d8d8d8;
+  --macd-signal: #e0a040;
+
+  /*
+   * Segoe UI is what a Windows terminal is drawn in, and the reference
+   * platform is a Windows application. No webfont is loaded: the system stack
+   * renders instantly, matches the OS, and cannot fail on a slow connection —
+   * which on a trading screen is the whole argument.
+   *
+   * --mono is the same face rather than a monospace one, again matching the
+   * reference. Column alignment comes from `font-variant-numeric: tabular-nums`
+   * on the .mono class instead, so price columns still stop rippling as they
+   * tick. Swap in Consolas here if a true monospace is ever wanted.
+   */
+  --sans: 'Segoe UI', Tahoma, Geneva, Verdana, system-ui, sans-serif;
+  --cond: 'Segoe UI Semibold', 'Segoe UI', Tahoma, Verdana, sans-serif;
+  --mono: 'Segoe UI', Tahoma, Geneva, Verdana, system-ui, sans-serif;
+
+  --row-h: 26px;
+  --header-h: 28px;
+  --control-h: 30px;
+  --touch-h: 44px;
+
+  --shadow-float: 0 14px 40px rgb(20 24 29 / 26%);
+  --shadow-toast: 0 8px 22px rgb(20 24 29 / 18%);
+}
+
+/*
+ * Dark alternative. A night desk asks for it, and the chart tokens
+ * barely move because the chart was already dark.
+ */
+:root[data-theme='dark'] {
+  --ground: #0e1418;
+  --chrome: #121a20;
+  --panel: #151d23;
+  --row-active: #1b252c;
+  --row-tint: #16211d;
+  --rule: #26333b;
+  --rule-strong: #35454f;
+  --track: #1f2a32;
+
+  --ink: #e4ebf0;
+  --ink-2: #9dafbb;
+  --ink-3: #677d8a;
+  --ink-4: #4a5c68;
+
+  --brand-deep: #1d1d4f;
+  --brand: #3d349c;
+  --brand-lift: #6b57c4;
+  --brand-wash: #1f1b40;
+  --brand-gold: #d8a33a;
+  --brand-gold-ink: #c99a3f;
+
+  --accent: #4aa3e8;
+  --accent-ink: #0e1418;
+  --accent-wash: #12283a;
+
+  --buy: #e8635a;
+  --buy-wash: #3a2226;
+  --sell: #4c9be8;
+  --sell-wash: #16304a;
+
+  --profit: #3fbf8f;
+  --profit-wash: #122c23;
+  --loss: #e8635a;
+  --warn: #e0a040;
+  --warn-wash: #2e2513;
+  --danger: #e8635a;
+  --danger-wash: #301a17;
+  --credit: #b98ce0;
+
+  --chart-bg: #05090c;
+  --chart-grid: #1e2a32;
+  --chart-axis: #677d8a;
+  --chart-ink: #d8e2e8;
+  --candle-up: #2fbf74;
+  --candle-down: #e04a45;
+  --macd-hist: #2f6f9f;
+  --macd-line: #9dafbb;
+  --macd-signal: #e0a040;
+
+  --shadow-float: 0 18px 48px rgb(0 0 0 / 62%);
+  --shadow-toast: 0 10px 26px rgb(0 0 0 / 50%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Shared primitives ─────────────────────────────────────────── */
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.cap {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.grow {
+  flex-grow: 1;
+}
+
+.dim {
+  color: var(--ink-3);
+}
+
+.buy {
+  color: var(--buy);
+}
+
+.sell {
+  color: var(--sell);
+}
+
+.profit {
+  color: var(--profit);
+}
+
+.loss {
+  color: var(--loss);
+}

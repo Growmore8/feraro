@@ -1,0 +1,286 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0E1418; color: #E4EBF0; font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+    a { color: #E0A040; text-decoration: none; } a:hover { color: #F0BC6A; }
+    .m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .cap { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.13em; text-transform: uppercase; color: #677D8A; }
+    .ph { display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 11px; border-bottom: 1px solid #26333B; background: #121A20; }
+    table { border-collapse: collapse; width: 100%; }
+    th { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: #677D8A; font-weight: 400; text-align: left; padding: 5px 10px; border-bottom: 1px solid #26333B; background: #121A20; }
+    td { padding: 5px 10px; border-bottom: 1px solid #1B252C; }
+    .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+    .sym { font-weight: 600; } .up { color: #3FBF8F; } .dn { color: #E8635A; } .dim { color: #677D8A; }
+    .pill { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; display: inline-block; }
+    .btn { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.05em; padding: 4px 9px; border: 1px solid #35454F; color: #9DAFBB; display: inline-block; white-space: nowrap; }
+    .tab { padding: 0 13px; height: 34px; display: flex; align-items: center; font-size: 11px; color: #9DAFBB; }
+    .ev { display: flex; gap: 11px; padding: 8px 12px; border-bottom: 1px solid #1B252C; }
+    .evi { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid #26333B; background: #121A20; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0E1418; overflow: hidden;">
+
+  <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 16px; background: #121A20; border-bottom: 1px solid #26333B;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15.5 L7 9.5 L11 12 L17 4"></path><path d="M3 17.5 L17 17.5"></path></svg>
+      <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.02em;">FERARO</span>
+      <span class="cap" style="padding-top: 2px;">Admin</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; flex-direction: column; gap: 1px;"><span class="m" style="font-size: 11px;">S. Whitfield</span><span class="cap">Administrator</span></div>
+  </div>
+
+  <div style="height: 34px; flex: none; display: flex; align-items: stretch; background: #0E1418; border-bottom: 1px solid #26333B; padding: 0 8px;">
+    <div class="tab">Instruments</div><div class="tab">Groups</div><div class="tab">Accounts</div><div class="tab">Trades</div><div class="tab">Funds</div>
+    <div class="tab" style="color: #E4EBF0; box-shadow: inset 0 -2px 0 0 {{accent}};">Activity</div>
+    <div class="tab">Audit</div>
+  </div>
+
+  <!-- Client header -->
+  <div style="flex: none; height: 74px; background: #151D23; border-bottom: 1px solid #26333B; display: flex; align-items: center; gap: 30px; padding: 0 18px;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="display: flex; align-items: baseline; gap: 10px;">
+        <span style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 20px; font-weight: 600;">A. Verma</span>
+        <span class="m dim" style="font-size: 13px;">#1001</span>
+      </div>
+      <span class="cap">Standard &middot; USD &middot; 1:100 &middot; client since 14.02.2024</span>
+    </div>
+    <div style="width: 1px; height: 40px; background: #26333B;"></div>
+    <div style="display: flex; gap: 26px;">
+      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="cap">Equity</span><span class="m" style="font-size: 15px;">25,659.00</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="cap">Margin level</span><span class="m up" style="font-size: 15px;">2,364%</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="cap">Open trades</span><span class="m" style="font-size: 15px;">3</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="cap">Lifetime volume</span><span class="m" style="font-size: 15px;">184.6 lots</span></div>
+      <div style="display: flex; flex-direction: column; gap: 2px;"><span class="cap">Last login</span><span class="m" style="font-size: 15px;">11:38 today</span></div>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 7px;">
+      <span class="pill" style="background: #122C23; color: #3FBF8F;">KYC verified</span>
+      <span class="pill" style="background: #122C23; color: #3FBF8F;">2FA on</span>
+      <span class="btn">Suspend trading</span>
+      <span class="btn">Message client</span>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 424px; gap: 1px; background: #26333B;">
+
+    <div style="display: flex; flex-direction: column; gap: 1px; background: #26333B; min-height: 0;">
+
+      <!-- Equity curve -->
+      <div style="background: #151D23; flex: none; height: 262px; display: flex; flex-direction: column;">
+        <div class="ph">
+          <span class="cap">Equity &middot; 30 days</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span class="cap"><span style="color: #3FBF8F;">&#9679;</span> Deposit</span>
+            <span class="cap"><span style="color: #E8635A;">&#9679;</span> Withdrawal</span>
+            <span class="btn">90 d</span>
+          </div>
+        </div>
+        <div style="flex-grow: 1; min-height: 0;">
+          <svg viewBox="0 0 900 220" width="100%" height="100%" preserveAspectRatio="none" role="img" aria-label="Account equity over thirty days, from 10,140 to 25,659 US dollars">
+            <g stroke="#1C262E" stroke-width="1" stroke-dasharray="2 4">
+              <line x1="40" y1="45.5" x2="840" y2="45.5"></line><line x1="40" y1="88" x2="840" y2="88"></line>
+              <line x1="40" y1="130.5" x2="840" y2="130.5"></line><line x1="40" y1="173" x2="840" y2="173"></line>
+            </g>
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A">
+              <text x="848" y="49">25,000</text><text x="848" y="91">20,000</text>
+              <text x="848" y="134">15,000</text><text x="848" y="176">10,000</text>
+            </g>
+            <path d="M40 171.8 L93 169.4 L147 174 L200 170.4 L253 69.8 L307 72.2 L360 67.6 L413 61 L467 64.7 L520 88 L573 83.9 L627 87 L680 77.3 L733 45.5 L787 42.6 L840 39.9 L840 200 L40 200 Z" fill="#132229"></path>
+            <polyline fill="none" stroke="#4C9BE8" stroke-width="1.8" stroke-linejoin="round"
+              points="40,171.8 93,169.4 147,174 200,170.4 253,69.8 307,72.2 360,67.6 413,61 467,64.7 520,88 573,83.9 627,87 680,77.3 733,45.5 787,42.6 840,39.9"></polyline>
+
+            <line x1="253" y1="20" x2="253" y2="200" stroke="#3FBF8F" stroke-width="1" stroke-dasharray="3 3"></line>
+            <circle cx="253" cy="69.8" r="4" fill="#3FBF8F"></circle>
+            <text x="259" y="34" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="#3FBF8F">+12,000</text>
+
+            <line x1="520" y1="20" x2="520" y2="200" stroke="#E8635A" stroke-width="1" stroke-dasharray="3 3"></line>
+            <circle cx="520" cy="88" r="4" fill="#E8635A"></circle>
+            <text x="526" y="34" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="#E8635A">&minus;2,000</text>
+
+            <line x1="733" y1="20" x2="733" y2="200" stroke="#3FBF8F" stroke-width="1" stroke-dasharray="3 3"></line>
+            <circle cx="733" cy="45.5" r="4" fill="#3FBF8F"></circle>
+            <text x="739" y="34" font-family="IBM Plex Mono, monospace" font-size="9.5" fill="#3FBF8F">+5,000</text>
+
+            <circle cx="840" cy="39.9" r="4" fill="#4C9BE8"></circle>
+            <line x1="40" y1="200" x2="840" y2="200" stroke="#26333B" stroke-width="1"></line>
+            <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#677D8A" text-anchor="middle">
+              <text x="40" y="215">04 Aug</text><text x="253" y="215">12 Aug</text><text x="520" y="215">22 Aug</text><text x="840" y="215">03 Sep</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Activity timeline -->
+      <div style="background: #151D23; flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="ph">
+          <span class="cap">Client activity</span>
+          <div style="display: flex; gap: 6px;">
+            <span class="btn" style="color: #0E1418; background: {{accent}}; border-color: {{accent}}; font-weight: 500;">All</span>
+            <span class="btn">Sessions</span><span class="btn">Orders</span><span class="btn">Funds</span><span class="btn">Security</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#3FBF8F" stroke-width="1.6" stroke-linecap="round"><path d="M3 8.5 L6.5 12 L13 4"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Order <span class="m">100482</span> filled &mdash; buy 1.00 EURUSD at <span class="m">1.08532</span></span>
+            <span class="cap">Web terminal &middot; Chrome 141 &middot; 49.36.180.22 &middot; Mumbai, IN</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">11:41:12</span>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#4C9BE8" stroke-width="1.6" stroke-linecap="round"><path d="M2 8h9M8 5l3 3-3 3"></path><path d="M11 3h3v10h-3"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Deposit of <span class="m">5,000.00 USD</span> cleared &mdash; Visa &bull;&bull;42</span>
+            <span class="cap">Reference DEP-88412 &middot; seq 4,174,220</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">09:28:44</span>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#9DAFBB" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="6" r="2.6"></circle><path d="M2.5 14c0-3 2.4-4.4 5.5-4.4S13.5 11 13.5 14"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Signed in</span>
+            <span class="cap">iOS app 2.4.1 &middot; iPhone 15 &middot; 49.36.180.22 &middot; Mumbai, IN &middot; 2FA passed</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">08:02:31</span>
+        </div>
+
+        <div class="ev" style="background: #1A1416;">
+          <div class="evi" style="border-color: #E8635A;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#E8635A" stroke-width="1.6" stroke-linecap="round"><path d="M8 2 L15 14 H1 Z"></path><path d="M8 6.5v3.5M8 12h0.01"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Three failed sign-in attempts, then a success</span>
+            <span class="cap" style="color: #E8635A;">185.220.101.44 &middot; Frankfurt, DE &middot; unrecognised device &middot; flagged for review</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">02.09 23:14</span>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#9DAFBB" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7" width="10" height="7"></rect><path d="M5.5 7V5a2.5 2.5 0 015 0v2"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Password changed</span>
+            <span class="cap">Web terminal &middot; 49.36.180.22 &middot; confirmed by email</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">02.09 19:40</span>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#E8635A" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Order <span class="m">100476</span> rejected &mdash; <span class="m" style="color: #E0A040;">InsufficientMargin</span></span>
+            <span class="cap">Buy 40.00 XAUUSD &middot; needed 94,120.00, free margin was 19,573.68</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">02.09 17:22</span>
+        </div>
+
+        <div class="ev">
+          <div class="evi"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#9DAFBB" stroke-width="1.6" stroke-linecap="round"><path d="M4 2h6l3 3v9H4z"></path><path d="M10 2v3h3"></path></svg></div>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+            <span style="font-size: 12px;">Proof-of-address document accepted</span>
+            <span class="cap">Reviewed by A. Fenwick &middot; expires 01.09.2027</span>
+          </div>
+          <span class="m dim" style="font-size: 11px; flex: none;">30.08 12:05</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sessions and flags -->
+    <div style="background: #151D23; display: flex; flex-direction: column; min-height: 0;">
+      <div class="ph"><span class="cap">Active sessions</span><span class="btn">Sign out all</span></div>
+      <table>
+        <thead><tr><th>Device</th><th>IP</th><th>Location</th><th class="n">Started</th></tr></thead>
+        <tbody>
+          <tr><td>Chrome 141 &middot; Windows</td><td class="m dim">49.36.180.22</td><td class="dim">Mumbai, IN</td><td class="n dim">11:38</td></tr>
+          <tr><td>iOS app 2.4.1</td><td class="m dim">49.36.180.22</td><td class="dim">Mumbai, IN</td><td class="n dim">08:02</td></tr>
+          <tr><td>Desktop 1.2.0</td><td class="m dim">49.36.180.22</td><td class="dim">Mumbai, IN</td><td class="n dim">02.09</td></tr>
+        </tbody>
+      </table>
+
+      <div class="ph" style="border-top: 1px solid #26333B;"><span class="cap" style="color: #E0A040;">Open flags</span><span class="m dim" style="font-size: 10px;">2</span></div>
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E8635A; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-size: 12px; font-weight: 600;">Sign-in from a new country</span>
+          <span class="m dim" style="font-size: 10px;">02.09 23:14</span>
+        </div>
+        <span class="dim" style="font-size: 11px; line-height: 1.5;">Frankfurt, DE after three failed attempts. No prior session from this region in 18 months.</span>
+        <div style="display: flex; gap: 6px;"><span class="btn" style="color: #3FBF8F; border-color: #24503E;">Clear</span><span class="btn" style="color: #E8635A; border-color: #3A2226;">Freeze account</span></div>
+      </div>
+      <div style="border-bottom: 1px solid #1B252C; border-left: 3px solid #E0A040; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-size: 12px; font-weight: 600;">Scalping pattern detected</span>
+          <span class="m dim" style="font-size: 10px;">01.09</span>
+        </div>
+        <span class="dim" style="font-size: 11px; line-height: 1.5;">Median hold 74 s over 210 trades. Routing rule 2 would move this account to the A-book.</span>
+        <div style="display: flex; gap: 6px;"><span class="btn">Review routing</span><span class="btn">Dismiss</span></div>
+      </div>
+
+      <div class="ph" style="border-top: 1px solid #26333B;"><span class="cap">Notifications sent</span></div>
+      <table>
+        <tbody>
+          <tr><td class="m dim" style="width: 68px;">11:41</td><td>Order filled</td><td class="dim">Push &middot; in-app</td></tr>
+          <tr><td class="m dim">09:29</td><td>Deposit credited</td><td class="dim">Email &middot; push</td></tr>
+          <tr><td class="m dim">02.09</td><td>New device sign-in</td><td class="dim">Email &middot; SMS</td></tr>
+          <tr><td class="m dim">02.09</td><td>Margin call 94%</td><td class="dim">Push &middot; SMS</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Trade history -->
+  <div style="flex: none; height: 216px; background: #151D23; border-top: 1px solid #26333B; display: flex; flex-direction: column;">
+    <div class="ph">
+      <span class="cap">Trade history &middot; account 1001</span>
+      <div style="display: flex; gap: 6px;"><span class="btn">Amended only</span><span class="btn">Statement PDF</span><span class="btn">Export CSV</span></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th style="width: 66px;">Ticket</th><th style="width: 104px;">Opened</th><th style="width: 104px;">Closed</th><th>Type</th><th>Symbol</th>
+        <th class="n">Volume</th><th class="n">Open</th><th class="n">Close</th><th class="n">Comm</th><th class="n">Swap</th><th class="n">P&amp;L</th><th style="width: 108px;">Note</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="m">100482</td><td class="m dim">03.09 09:41</td><td class="m dim">&mdash;</td>
+          <td><span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span></td><td class="sym">EURUSD</td>
+          <td class="n">1.00</td><td class="n">1.08484</td><td class="n dim">1.08530</td><td class="n dim">&minus;7.00</td><td class="n dn">&minus;1.42</td><td class="n up">+46.00</td>
+          <td><span class="pill" style="background: #2E2513; color: #E0A040;">Amend queued</span></td></tr>
+        <tr><td class="m">100427</td><td class="m dim">02.09 11:18</td><td class="m dim">02.09 15:44</td>
+          <td><span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span></td><td class="sym">GBPUSD</td>
+          <td class="n">2.00</td><td class="n">1.27218</td><td class="n">1.27312</td><td class="n dim">&minus;14.00</td><td class="n dim">0.00</td><td class="n up">+188.00</td>
+          <td class="dim">&mdash;</td></tr>
+        <tr><td class="m">100411</td><td class="m dim">01.09 14:02</td><td class="m dim">01.09 16:30</td>
+          <td><span class="pill" style="background: #3A2226; color: #E8635A;">Sell</span></td><td class="sym">US500</td>
+          <td class="n">3.00</td><td class="n">5492.4</td><td class="n">5496.6</td><td class="n dim">0.00</td><td class="n dn">&minus;1.20</td><td class="n dn">&minus;126.00</td>
+          <td class="dim">&mdash;</td></tr>
+        <tr><td class="m">100388</td><td class="m dim">30.08 09:55</td><td class="m dim">30.08 09:56</td>
+          <td><span class="pill" style="background: #16304A; color: #4C9BE8;">Buy</span></td><td class="sym">XAUUSD</td>
+          <td class="n">0.20</td><td class="n">2366.20</td><td class="n dim">&mdash;</td><td class="n dim">0.00</td><td class="n dim">0.00</td><td class="n dim">0.00</td>
+          <td><span class="pill" style="background: #301A17; color: #E8635A;">Voided</span></td></tr>
+        <tr><td class="m">100352</td><td class="m dim">28.08 08:14</td><td class="m dim">29.08 10:02</td>
+          <td><span class="pill" style="background: #3A2226; color: #E8635A;">Sell</span></td><td class="sym">USDJPY</td>
+          <td class="n">1.00</td><td class="n">157.884</td><td class="n">157.402</td><td class="n dim">&minus;7.00</td><td class="n up">+3.10</td><td class="n up">+306.00</td>
+          <td><span class="pill" style="background: #1F2A32; color: #9DAFBB;">Swap fixed</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#E0A040","options":["#E0A040","#4C9BE8","#3FBF8F","#B98CE0"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent ?? '#E0A040' }; }
+}
+</script>
+</body>
+</html>

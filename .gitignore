@@ -1,0 +1,40 @@
+# Build output, for every crate rather than just the engine's.
+**/target/
+**/*.rs.bk
+*.pdb
+
+# The terminals.
+**/node_modules/
+**/dist/
+*.tsbuildinfo
+
+# Journals are trading records — never commit one, not even a test fixture with
+# real account ids in it. CI fixtures live in engine/tests/fixtures/ and are
+# generated, not recorded.
+*.jnl
+/data/
+
+# A snapshot is a fold of the journal: balances, owners, open positions. It
+# is the same trading record in a different shape, and committing one would
+# publish every account in it.
+*.snapshot.json
+
+# The user store holds password hashes. Hashes are not secrets you can use,
+# but they are secrets you can attack offline, and a committed one is
+# permanent. Every deployment makes its own.
+users.json
+
+.env
+.env.*
+!.env.example
+
+# Certificates and whatever the proxy caches beside them.
+/ops/backups/
+caddy-data/
+caddy-config/
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
