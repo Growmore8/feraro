@@ -164,7 +164,7 @@ export function MarketWatch({
         <table className="table mw">
           <thead>
             <tr>
-              <th style={{ width: 104 }}>Symbol</th>
+              <th>Symbol</th>
               <th className="num">Bid</th>
               <th className="num">Ask</th>
               <th className="num" style={{ width: 38 }} title="Spread, in points">

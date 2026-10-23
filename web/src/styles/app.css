@@ -63,7 +63,11 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  width: 104px;
+  /* Sized by what is in it rather than by a number somebody guessed:
+     five size chips and a stepper decide this, and 104px did not fit
+     them — the last chip was sliced down the middle. */
+  width: auto;
+  min-width: 104px;
 }
 
 .dt-lots {
@@ -1834,8 +1838,11 @@
    a clipped symbol beside a visible price is better than a whole symbol
    and no price. */
 
+/* Auto, not fixed. Fixed layout was the answer when the pills carried a
+   minimum width and overflowed; without them the prices can simply ask
+   for what they need, and the symbol takes what is left. */
 .table.mw {
-  table-layout: fixed;
+  table-layout: auto;
   width: 100%;
 }
 
@@ -1917,14 +1924,26 @@
 
 /* Smaller and quieter than the stepper above them: a shortcut, not the
    main way to set a size. */
-.dt .chips { gap: 2px; }
-
-.dt .chips button {
-  padding: 1px 5px;
-  font-size: 9px;
+.dt .chips {
+  gap: 2px;
+  flex-wrap: nowrap;
 }
 
-.dt .dt-arrow { width: 16px; height: 30px; }
+.dt .chips button {
+  padding: 1px 4px;
+  font-size: 8.5px;
+  white-space: nowrap;
+}
+
+.dt .dt-arrow {
+  width: 15px;
+  height: 30px;
+  flex: none;
+}
+
+/* A little air around each deal, so the arrows read as its own pair
+   rather than as something stuck to the button next door. */
+.dt .deal { margin: 0 1px; }
 
 .dt-on {
   max-width: 108px;
@@ -1989,3 +2008,30 @@
   .table.mw .src,
   .table.mw th:last-child { display: none; }
 }
+
+
+/* ── Prices in the watch list are text, not blocks ──
+
+   The filled pill was drawn for a dock showing a handful of rows, where a
+   tinted block reads as "this is a price you can deal on". Over twenty-one
+   rows it stops saying that and becomes a wall of red and blue with the
+   numbers trapped inside it — and the padding it needs is what kept
+   clipping the longest bid on the list.
+
+   So in this table the tint stays on the digits and the block goes. The
+   colour still says which side it is; it just stops shouting it twenty-one
+   times. Cubex shows these as plain text for the same reason. */
+
+.table.mw .px {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The widest price on the list decides the column, so nothing is ever cut
+   off mid-number — which is the one thing a price column must never do. */
+.table.mw td.num { overflow: visible; }
