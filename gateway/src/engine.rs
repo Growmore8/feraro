@@ -163,6 +163,18 @@ pub enum Command {
         /// How much to close. Zero means all of it.
         qty: Qty,
     },
+    /// A terminal wants to change a resting order without withdrawing it.
+    AmendOrder {
+        by: UserId,
+        account: AccountId,
+        ticket: OrderId,
+        /// Size from now on. Zero keeps what it has.
+        qty: Qty,
+        /// Trigger from now on. Zero keeps what it has.
+        trigger_price: Price,
+        /// Stop-limit's resting price. Zero keeps what it has.
+        limit_price: Price,
+    },
     /// A terminal wants to withdraw a resting order.
     CancelOrder {
         by: UserId,
@@ -559,6 +571,65 @@ fn statement_entry(
     Some(statement_line(
         record, portfolio, account, kind, ticket, amount,
     ))
+}
+
+/// Replays one event into the book of resting orders.
+///
+/// Separate from the portfolio's fold because resting orders are not
+/// money: nothing here touches a balance, and an order that never filled
+/// has no place in the ledger. What it does have is a place on the book,
+/// which a restart must not quietly empty.
+///
+/// Deliberately total over the events that matter and silent about the
+/// rest, so adding an event elsewhere cannot change what rests here by
+/// accident.
+fn fold_resting(book: &mut PendingBook, event: &Event) {
+    match *event {
+        Event::PendingOrderPlaced {
+            order,
+            account,
+            instrument,
+            side,
+            kind,
+            qty,
+            trigger_price,
+            limit_price,
+            tif,
+            ..
+        } => {
+            // A refusal here is a journal that disagrees with itself — an
+            // order the engine accepted that the book will not take. It
+            // cannot be reported to anybody during a replay, so it is
+            // dropped rather than guessed at, and the order simply is not
+            // on the book, which is the state the next tick will act on.
+            let _ = book.place(
+                order,
+                account,
+                instrument,
+                side,
+                kind,
+                qty,
+                trigger_price,
+                limit_price,
+                tif,
+            );
+        }
+        Event::OrderAmended {
+            order,
+            qty,
+            trigger_price,
+            limit_price,
+            ..
+        } => {
+            book.amend(order, qty, trigger_price, limit_price);
+        }
+        // Triggered and cancelled both take it off: one became a live
+        // order, the other was withdrawn, and neither is still resting.
+        Event::PendingOrderTriggered { order, .. } | Event::OrderCancelled { order, .. } => {
+            book.cancel(order);
+        }
+        _ => {}
+    }
 }
 
 /// True when `value` is a whole multiple of `step`.
@@ -996,8 +1067,22 @@ impl Engine {
         let mut activity: Vec<ActivityDto> = Vec::new();
         let mut statement: Vec<(AccountId, StatementDto)> = Vec::new();
         let mut folded = 0u64;
+        // Resting orders, rebuilt from the journal.
+        //
+        // They used to start empty, which meant a restart silently threw
+        // away every limit and stop on the book while the journal went on
+        // saying they had been accepted and never cancelled. A trader's
+        // order vanished and nothing told them.
+        //
+        // This is folded outside the snapshot guard below, because the
+        // snapshot does not cover the book: an order placed before the
+        // last snapshot and still resting has to come back, and the only
+        // record of it is the event.
+        let mut resting = PendingBook::new();
+
         for record in Replay::open(dir, base).context("opening the replay")? {
             let record = record.context("reading a journaled event")?;
+            fold_resting(&mut resting, &record.event);
             // Everything the snapshot covered is already in the state. Quotes
             // are still read, because bars are not snapshotted and a chart
             // with no history is worse than one that costs a little startup.
@@ -1078,7 +1163,7 @@ impl Engine {
 
         let mut engine = Engine {
             portfolio,
-            resting: PendingBook::new(),
+            resting,
             journal,
             policy: MarginPolicy::default(),
             terms,
@@ -1447,6 +1532,14 @@ impl Engine {
                 ticket,
                 qty,
             } => self.on_close(by, account, ticket, qty),
+            Command::AmendOrder {
+                by,
+                account,
+                ticket,
+                qty,
+                trigger_price,
+                limit_price,
+            } => self.on_amend_resting(by, account, ticket, qty, trigger_price, limit_price),
             Command::CancelOrder {
                 by,
                 account,
@@ -2000,6 +2093,139 @@ impl Engine {
         );
         self.touch(account);
         self.evaluate_risk(account)?;
+        self.on_flush()
+    }
+
+    /// Changes a resting order, keeping its ticket and its place.
+    ///
+    /// # Why the checks are the ones a new order gets
+    ///
+    /// An amendment is a new order in everything but its queue position,
+    /// so it has to clear the same bar: a size on the step grid, a price
+    /// on the tick grid, and a stop-limit whose limit is on the right side
+    /// of its trigger. Anything less would let a trader place an order
+    /// they could not have placed, by placing a legal one and then moving
+    /// it.
+    ///
+    /// Margin is deliberately *not* re-checked. A resting order ties up
+    /// nothing until it fills — that is what resting means — and the
+    /// admission test happens at the fill, where it already does. Checking
+    /// here as well would refuse a trader shrinking an order they could no
+    /// longer afford to place, which is the one amendment that always
+    /// makes things safer.
+    fn on_amend_resting(
+        &mut self,
+        by: UserId,
+        account: AccountId,
+        ticket: OrderId,
+        qty: Qty,
+        trigger_price: Price,
+        limit_price: Price,
+    ) -> Result<()> {
+        // On this account only. A ticket on somebody else's book must not
+        // be movable by naming it, and the answer is the same whether it
+        // exists elsewhere or not at all.
+        let Some(resting) = self.resting.get(ticket).copied() else {
+            self.announce_to(
+                account,
+                ServerMessage::Unauthorized {
+                    detail: "that order is not on this account",
+                },
+            );
+            return Ok(());
+        };
+        if resting.account != account {
+            self.announce_to(
+                account,
+                ServerMessage::Unauthorized {
+                    detail: "that order is not on this account",
+                },
+            );
+            return Ok(());
+        }
+
+        // Zero means "leave it", so a terminal changing one field need not
+        // know the others. It also means a trader cannot set a size or a
+        // price to zero by mistake and have it taken literally.
+        let qty = if qty.is_zero() { resting.qty } else { qty };
+        let trigger_price = if trigger_price.is_zero() {
+            resting.trigger_price
+        } else {
+            trigger_price
+        };
+        let limit_price = if limit_price.is_zero() {
+            resting.limit_price
+        } else {
+            limit_price
+        };
+
+        let refuse = |engine: &mut Self, reason: RejectReason| {
+            engine.announce_to(
+                account,
+                ServerMessage::Rejected {
+                    reason: reason_str(reason),
+                },
+            );
+        };
+
+        let Some(terms) = self.terms.get(&resting.instrument).copied() else {
+            refuse(self, RejectReason::UnknownInstrument);
+            return Ok(());
+        };
+        if qty <= Qty::ZERO
+            || qty < terms.min_qty
+            || qty > terms.max_qty
+            || !multiple_of(qty, terms.qty_step)
+        {
+            refuse(self, RejectReason::InvalidQuantity);
+            return Ok(());
+        }
+        if trigger_price <= Price::ZERO || !price_on_tick(trigger_price, terms.instrument.tick_size)
+        {
+            refuse(self, RejectReason::InvalidPrice);
+            return Ok(());
+        }
+        if resting.kind == OrderType::StopLimit {
+            // A buy's limit sits at or above its trigger and a sell's at
+            // or below, because the limit is where it rests once the stop
+            // fires and the other way round is an order that can never
+            // fill.
+            let sane = match resting.side {
+                Side::Buy => limit_price >= trigger_price,
+                Side::Sell => limit_price <= trigger_price,
+            };
+            if !sane || !price_on_tick(limit_price, terms.instrument.tick_size) {
+                refuse(self, RejectReason::InvalidPrice);
+                return Ok(());
+            }
+        }
+
+        // It was there a moment ago and nothing has run since, so this
+        // cannot fail. If it ever does, the order has gone from under us
+        // and saying so is better than journaling a change to nothing.
+        if self
+            .resting
+            .amend(ticket, qty, trigger_price, limit_price)
+            .is_none()
+        {
+            self.announce_to(
+                account,
+                ServerMessage::Unauthorized {
+                    detail: "that order is no longer on the book",
+                },
+            );
+            return Ok(());
+        }
+
+        self.emit(Event::OrderAmended {
+            order: ticket,
+            qty,
+            trigger_price,
+            limit_price,
+            by,
+        })?;
+        self.announce_to(account, ServerMessage::OrderPlaced { ticket: ticket.0 });
+        self.touch(account);
         self.on_flush()
     }
 
@@ -6125,6 +6351,208 @@ mod tests {
             "1100.01"
         );
         books_agree(&e);
+    }
+
+    // ── Amending a resting order ──────────────────────────────────────
+
+    /// Places a buy limit well below the market, and returns its ticket.
+    fn rest_a_limit(e: &mut Engine) -> OrderId {
+        e.handle(Command::Place {
+            by: TRADER_USER,
+            limit_price: Price::ZERO,
+            account: TRADER,
+            instrument: BTC,
+            side: Side::Buy,
+            kind: OrderType::Limit,
+            qty: q("0.010"),
+            price: p("70000.00"),
+        })
+        .unwrap();
+        e.resting.all().next().expect("one resting order").order
+    }
+
+    fn move_order(e: &mut Engine, ticket: OrderId, qty: Qty, at: Price) -> Result<()> {
+        e.handle(Command::AmendOrder {
+            by: TRADER_USER,
+            account: TRADER,
+            ticket,
+            qty,
+            trigger_price: at,
+            limit_price: Price::ZERO,
+        })
+    }
+
+    #[test]
+    fn amending_moves_the_order_and_keeps_its_ticket() {
+        // The whole point. Cancelling and re-placing would give a new
+        // ticket and, for two round trips, leave nothing on the book.
+        let s = Scratch::new("amend-move");
+        let (mut e, _rx) = engine(&s.0);
+        let ticket = rest_a_limit(&mut e);
+
+        move_order(&mut e, ticket, q("0.020"), p("75000.00")).unwrap();
+
+        let order = e.resting.all().next().expect("still resting");
+        assert_eq!(order.order, ticket, "the ticket changed");
+        assert_eq!(order.qty, q("0.020"));
+        assert_eq!(order.trigger_price, p("75000.00"));
+        assert_eq!(e.resting.len(), 1, "it is still one order");
+    }
+
+    #[test]
+    fn an_empty_field_leaves_that_one_alone() {
+        // So a terminal changing the price need not know the size, and a
+        // zero typed by mistake is not taken literally.
+        let s = Scratch::new("amend-partial");
+        let (mut e, _rx) = engine(&s.0);
+        let ticket = rest_a_limit(&mut e);
+
+        move_order(&mut e, ticket, Qty::ZERO, p("72000.00")).unwrap();
+        let order = e.resting.all().next().unwrap();
+        assert_eq!(order.qty, q("0.010"), "the size moved anyway");
+        assert_eq!(order.trigger_price, p("72000.00"));
+
+        move_order(&mut e, ticket, q("0.050"), Price::ZERO).unwrap();
+        let order = e.resting.all().next().unwrap();
+        assert_eq!(order.qty, q("0.050"));
+        assert_eq!(order.trigger_price, p("72000.00"), "the price moved anyway");
+    }
+
+    #[test]
+    fn an_amendment_clears_the_same_bar_a_new_order_does() {
+        // Otherwise a trader places a legal order and then moves it to
+        // one they could never have placed.
+        let s = Scratch::new("amend-refused");
+        let (mut e, mut rx) = engine(&s.0);
+        let ticket = rest_a_limit(&mut e);
+        let _ = drain(&mut rx);
+
+        for (what, qty, at) in [
+            ("off the step grid", q("0.0005"), Price::ZERO),
+            ("below the minimum", q("0.0001"), Price::ZERO),
+            ("off the tick grid", Qty::ZERO, p("70000.005")),
+        ] {
+            move_order(&mut e, ticket, qty, at).unwrap();
+            e.commit_at(e.last_sync).unwrap();
+            let said = drain(&mut rx);
+            assert!(
+                said.iter()
+                    .any(|m| matches!(m, ServerMessage::Rejected { .. })),
+                "{what} went through: {said:?}"
+            );
+        }
+
+        // And nothing moved.
+        let order = e.resting.all().next().unwrap();
+        assert_eq!(order.qty, q("0.010"));
+        assert_eq!(order.trigger_price, p("70000.00"));
+    }
+
+    #[test]
+    fn an_order_on_another_account_cannot_be_moved_by_naming_it() {
+        let s = Scratch::new("amend-not-yours");
+        let (mut e, mut rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        let ticket = rest_a_limit(&mut e);
+        let _ = drain(&mut rx);
+
+        e.handle(Command::AmendOrder {
+            by: SECOND_USER,
+            account: other,
+            ticket,
+            qty: q("5.000"),
+            trigger_price: p("79000.00"),
+            limit_price: Price::ZERO,
+        })
+        .unwrap();
+        e.commit_at(e.last_sync).unwrap();
+
+        let order = e.resting.all().next().unwrap();
+        assert_eq!(order.qty, q("0.010"), "somebody else moved it");
+        assert_eq!(order.trigger_price, p("70000.00"));
+    }
+
+    #[test]
+    fn an_amended_order_still_fires_at_its_new_price() {
+        // An amendment that changes where it rests but not whether it
+        // works would be worse than no amendment at all.
+        let s = Scratch::new("amend-fires");
+        let (mut e, _rx) = engine(&s.0);
+        let ticket = rest_a_limit(&mut e);
+
+        // Up to just under the market, where the next tick reaches it.
+        move_order(&mut e, ticket, Qty::ZERO, p("79990.00")).unwrap();
+        assert_eq!(e.resting.len(), 1);
+
+        tick(&mut e, "79980.00", "79980.01");
+        assert_eq!(e.resting.len(), 0, "it did not trigger");
+        assert_eq!(
+            e.portfolio.account(TRADER).unwrap().lots(BTC).len(),
+            1,
+            "it triggered but did not fill"
+        );
+    }
+
+    // ── Resting orders and a restart ──────────────────────────────────
+
+    #[test]
+    fn a_resting_order_is_still_there_after_a_restart() {
+        // It was not. The replay rebuilt the portfolio, the books and the
+        // statement, and left the order book empty — so a restart threw
+        // away every limit and stop while the journal went on saying they
+        // had been accepted and never cancelled.
+        let s = Scratch::new("resting-replay");
+        let ticket;
+        {
+            let (mut e, _rx) = engine(&s.0);
+            ticket = rest_a_limit(&mut e);
+            move_order(&mut e, ticket, q("0.030"), p("71000.00")).unwrap();
+            e.commit_at(e.last_sync).unwrap();
+        }
+
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(again.resting.len(), 1, "the order vanished");
+        let order = again.resting.all().next().unwrap();
+        assert_eq!(order.order, ticket);
+        // The amendment came back with it, not the order as first placed.
+        assert_eq!(order.qty, q("0.030"));
+        assert_eq!(order.trigger_price, p("71000.00"));
+    }
+
+    #[test]
+    fn a_cancelled_order_does_not_come_back_from_the_journal() {
+        let s = Scratch::new("resting-cancelled");
+        {
+            let (mut e, _rx) = engine(&s.0);
+            let ticket = rest_a_limit(&mut e);
+            e.handle(Command::CancelOrder {
+                by: TRADER_USER,
+                account: TRADER,
+                ticket,
+            })
+            .unwrap();
+            e.commit_at(e.last_sync).unwrap();
+            assert_eq!(e.resting.len(), 0);
+        }
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(again.resting.len(), 0, "a withdrawn order came back");
+    }
+
+    #[test]
+    fn an_order_that_already_triggered_does_not_come_back_resting() {
+        // It became a live order; it is not waiting for anything.
+        let s = Scratch::new("resting-triggered");
+        {
+            let (mut e, _rx) = engine(&s.0);
+            let ticket = rest_a_limit(&mut e);
+            move_order(&mut e, ticket, Qty::ZERO, p("79990.00")).unwrap();
+            tick(&mut e, "79980.00", "79980.01");
+            assert_eq!(e.resting.len(), 0);
+            e.commit_at(e.last_sync).unwrap();
+        }
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(again.resting.len(), 0, "a triggered order came back");
+        assert_eq!(again.portfolio.account(TRADER).unwrap().lots(BTC).len(), 1);
     }
 
     fn books_agree(e: &Engine) {

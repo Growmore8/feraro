@@ -3069,6 +3069,23 @@ fn decode(by: UserId, account: AccountId, message: ClientMessage) -> Option<Comm
             // whole position they asked about.
             qty: domain::Qty::parse(qty.trim()).unwrap_or(domain::Qty::ZERO),
         }),
+        ClientMessage::AmendOrder {
+            ticket,
+            qty,
+            price,
+            limit_price,
+        } => Some(Command::AmendOrder {
+            by,
+            account,
+            ticket: domain::OrderId(ticket),
+            // Unreadable means "leave it", which is what empty means too:
+            // the alternative is dropping the whole command, and a trader
+            // pressing Amend and watching nothing happen is worse than
+            // one field not changing.
+            qty: domain::Qty::parse(qty.trim()).unwrap_or(domain::Qty::ZERO),
+            trigger_price: domain::Price::parse(price.trim()).unwrap_or(domain::Price::ZERO),
+            limit_price: domain::Price::parse(limit_price.trim()).unwrap_or(domain::Price::ZERO),
+        }),
         ClientMessage::CancelOrder { ticket } => Some(Command::CancelOrder {
             by,
             account,

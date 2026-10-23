@@ -398,6 +398,23 @@ pub enum ClientMessage {
         #[serde(default)]
         qty: String,
     },
+    /// Change a resting order without withdrawing it.
+    ///
+    /// Cancelling and re-placing leaves a window with nothing on the book:
+    /// if the market gaps through the level in that window the trader gets
+    /// nothing, having asked for something the whole time. Every field is
+    /// a decimal string, and an empty one means "leave it alone", so a
+    /// terminal changing the price need not know the size.
+    #[serde(rename_all = "camelCase")]
+    AmendOrder {
+        ticket: u64,
+        #[serde(default)]
+        qty: String,
+        #[serde(default)]
+        price: String,
+        #[serde(default)]
+        limit_price: String,
+    },
     /// Withdraw a resting order.
     #[serde(rename_all = "camelCase")]
     CancelOrder { ticket: u64 },

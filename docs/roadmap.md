@@ -81,6 +81,15 @@ replay. That is the cost of this architecture and it is paid deliberately.
       eleven things on for without reading them. Three are nobody's to be
       given — the audit trail, pricing, and correcting a trade — and the
       screen says why rather than hiding them.
+- [x] **Amend a resting order** *(engine)* — size and prices change
+      without the order leaving the book, so there is no window where a
+      gap through the level finds nothing there. Same ticket, same place
+      in the queue, same bar a new order clears.
+- [x] **Resting orders survive a restart** — they did not. The replay
+      rebuilt the portfolio, the books and the statement and left the
+      order book empty, so every limit and stop vanished on a deploy
+      while the journal went on saying they were accepted and never
+      cancelled.
 
 ## Next, in order
 
@@ -94,11 +103,6 @@ Ordered by what a broker needs to operate, not by size.
       Fetching a QR tells an image service the secret, and a hand-written
       encoder cannot be tested here without also writing a decoder — so it
       waits for one that can be.
-- [ ] **Amend a resting order** — change its trigger price or volume
-      without cancelling. Today a trader cancels and re-places, which
-      leaves a window with no order on the book at all: if the market gaps
-      through the level in that window they get nothing. (Stop loss and
-      take profit on an *open* position already work.)
 - [ ] **Trailing stop** *(engine)* and **expiry on resting orders**.
 - [ ] **Per-account risk settings** — leverage, margin-call level, maximum
       lot, swap-free. *(engine, mostly)*

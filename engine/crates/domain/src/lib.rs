@@ -380,6 +380,38 @@ pub enum Event {
         /// Who set it.
         by: UserId,
     },
+    /// A resting order was changed without being withdrawn.
+    ///
+    /// # Why not cancel and place again
+    ///
+    /// Because that leaves a window with no order on the book at all. A
+    /// trader moving a buy limit five points closer would, for the length
+    /// of two round trips, have nothing resting — and if the market gaps
+    /// through the level in that window they get nothing, having asked for
+    /// something the whole time.
+    ///
+    /// One event, so a replay cannot land between the two halves either.
+    /// The ticket does not change, because it is the same order: a trader
+    /// who moved their stop still has the ticket they quoted to support.
+    ///
+    /// # What cannot change
+    ///
+    /// Not the account, the instrument, the side or the kind. Those are
+    /// what the order *is*; changing one of them is a different order, and
+    /// calling it an amendment would let somebody turn a buy into a sell
+    /// while keeping its place in the queue.
+    OrderAmended {
+        /// The order being changed.
+        order: OrderId,
+        /// Size from now on.
+        qty: Qty,
+        /// The price that activates it from now on.
+        trigger_price: Price,
+        /// Where a stop-limit rests once triggered. Zero otherwise.
+        limit_price: Price,
+        /// Who changed it: the holder, or the desk acting for them.
+        by: UserId,
+    },
     /// Money moved from one account to another.
     ///
     /// # Why this is one event and not two
@@ -916,6 +948,7 @@ impl Event {
             | Event::CreditSet { .. }
             | Event::InsuranceSet { .. }
             | Event::FundsTransferred { .. }
+            | Event::OrderAmended { .. }
             | Event::AccountSuspended { .. }
             | Event::AccountReinstated { .. }
             | Event::OrderAccepted { .. }
@@ -956,6 +989,7 @@ impl Event {
             Event::CreditSet { .. } => 0x07,
             Event::InsuranceSet { .. } => 0x50,
             Event::FundsTransferred { .. } => 0x51,
+            Event::OrderAmended { .. } => 0x53,
             Event::AccountSuspended { .. } => 0x08,
             Event::AccountReinstated { .. } => 0x09,
             Event::InstrumentListed { .. } => 0x10,
@@ -1348,6 +1382,19 @@ pub fn encode(record: &Record) -> Vec<u8> {
             w.money(amount);
             w.u64(by.0);
         }
+        Event::OrderAmended {
+            order,
+            qty,
+            trigger_price,
+            limit_price,
+            by,
+        } => {
+            w.u64(order.0);
+            w.qty(qty);
+            w.price(trigger_price);
+            w.price(limit_price);
+            w.u64(by.0);
+        }
         Event::FundsTransferred {
             from,
             to,
@@ -1732,6 +1779,13 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             markup: r.price()?,
             commission: Money::ZERO,
         },
+        0x53 => Event::OrderAmended {
+            order: OrderId(r.u64()?),
+            qty: r.qty()?,
+            trigger_price: r.price()?,
+            limit_price: r.price()?,
+            by: UserId(r.u64()?),
+        },
         0x51 => Event::FundsTransferred {
             from: AccountId(r.u64()?),
             to: AccountId(r.u64()?),
@@ -1950,6 +2004,13 @@ mod tests {
                 to: AccountId(1002),
                 amount: money::Money::parse("250.00").unwrap(),
                 by: UserId(1),
+            },
+            Event::OrderAmended {
+                order: OrderId(7),
+                qty: Qty::parse("50000").unwrap(),
+                trigger_price: Price::parse("1.08400").unwrap(),
+                limit_price: Price::ZERO,
+                by: UserId(2),
             },
             Event::InstrumentListed {
                 instrument: eurusd(),
@@ -2258,6 +2319,41 @@ mod tests {
             panic!("not a close");
         };
         assert_eq!(qty, Qty::parse("0.40").unwrap());
+    }
+
+    #[test]
+    fn an_amendment_crosses_as_the_order_and_what_it_now_is() {
+        let moved = Event::OrderAmended {
+            order: OrderId(7),
+            qty: Qty::parse("50000").unwrap(),
+            trigger_price: Price::parse("1.08400").unwrap(),
+            limit_price: Price::ZERO,
+            by: UserId(2),
+        };
+        let bytes = encode(&Record {
+            seq: Seq(11),
+            at: Timestamp(0),
+            event: moved,
+        });
+        // Header, the ticket, the size, two prices, and who moved it.
+        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 8 + 8 + 8 + 8);
+        assert_eq!(bytes[18], 0x53);
+        assert_eq!(decode(&bytes).expect("decodes").event, moved);
+    }
+
+    #[test]
+    fn an_amendment_is_durable_because_losing_it_loses_an_order() {
+        // The record that says where an order now rests. A journal that
+        // acknowledged it before it was on disk could lose it in a crash,
+        // and the order would come back at the price it was moved from.
+        assert!(Event::OrderAmended {
+            order: OrderId(7),
+            qty: Qty::parse("50000").unwrap(),
+            trigger_price: Price::parse("1.08400").unwrap(),
+            limit_price: Price::ZERO,
+            by: UserId(2),
+        }
+        .must_be_durable());
     }
 
     #[test]

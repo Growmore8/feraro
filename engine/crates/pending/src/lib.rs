@@ -250,6 +250,37 @@ impl PendingBook {
         Ok(resting)
     }
 
+    /// Changes a resting order's size and prices, keeping its place.
+    ///
+    /// # What does not change
+    ///
+    /// The ticket, the account, the instrument, the side and the kind. The
+    /// first because it is the same order — a trader who moved their stop
+    /// still has the ticket they quoted to support — and the rest because
+    /// they are what the order *is*. Letting an amendment turn a buy into
+    /// a sell would be a new order wearing an old one's queue position.
+    ///
+    /// `placed` is kept too, so two orders triggering on the same tick
+    /// still fire in the order they arrived. Amending does not jump the
+    /// queue, and it does not lose a place in it either: the trader asked
+    /// for a different price, not a different turn.
+    ///
+    /// Returns the order as it now stands, or `None` if there is no such
+    /// order resting.
+    pub fn amend(
+        &mut self,
+        order: OrderId,
+        qty: Qty,
+        trigger_price: Price,
+        limit_price: Price,
+    ) -> Option<PendingOrder> {
+        let resting = self.orders.get_mut(&order)?;
+        resting.qty = qty;
+        resting.trigger_price = trigger_price;
+        resting.limit_price = limit_price;
+        Some(*resting)
+    }
+
     /// Removes an order, returning it if it was there.
     pub fn cancel(&mut self, order: OrderId) -> Option<PendingOrder> {
         let removed = self.orders.remove(&order)?;
@@ -646,6 +677,101 @@ mod tests {
 
         // Converting a plain limit is meaningless and refused.
         assert!(b.convert_to_limit(ticket).is_none());
+    }
+
+    /// A buy limit resting at `at`, on the shared test instrument.
+    fn place_limit(
+        book: &mut PendingBook,
+        order: OrderId,
+        at: Price,
+    ) -> Result<PendingOrder, PendingError> {
+        book.place(
+            order,
+            TRADER,
+            BTC,
+            Side::Buy,
+            OrderType::Limit,
+            q("1"),
+            at,
+            Price::ZERO,
+            TimeInForce::GoodTilCancelled,
+        )
+    }
+
+    #[test]
+    fn amending_keeps_the_ticket_and_the_place_in_the_queue() {
+        // Amending is not re-placing. A trader who moved their stop still
+        // has the ticket they quoted to support, and still has the turn
+        // they waited for: they asked for a different price, not a
+        // different place in the queue.
+        let mut book = PendingBook::new();
+        let first = place_limit(&mut book, OrderId(1), p("100.00"));
+        let second = place_limit(&mut book, OrderId(2), p("100.00"));
+        assert!(first.is_ok() && second.is_ok());
+
+        let before = book.get(OrderId(1)).copied().expect("resting");
+        let after = book
+            .amend(OrderId(1), q("5"), p("101.00"), Price::ZERO)
+            .expect("amended");
+
+        assert_eq!(after.order, OrderId(1));
+        assert_eq!(after.qty, q("5"));
+        assert_eq!(after.trigger_price, p("101.00"));
+        assert_eq!(after.placed, before.placed, "it lost its turn");
+        assert_eq!(book.len(), 2, "it was re-placed rather than moved");
+    }
+
+    #[test]
+    fn amending_changes_nothing_about_what_the_order_is() {
+        // The account, instrument, side and kind are what the order *is*.
+        // Letting an amendment change one would be a new order wearing an
+        // old one's queue position — a buy turned into a sell without
+        // losing its turn.
+        let mut book = PendingBook::new();
+        place_limit(&mut book, OrderId(1), p("100.00")).unwrap();
+        let before = book.get(OrderId(1)).copied().unwrap();
+
+        let after = book
+            .amend(OrderId(1), q("9"), p("99.00"), p("98.00"))
+            .unwrap();
+
+        assert_eq!(after.account, before.account);
+        assert_eq!(after.instrument, before.instrument);
+        assert_eq!(after.side, before.side);
+        assert_eq!(after.kind, before.kind);
+    }
+
+    #[test]
+    fn amending_an_order_that_is_not_there_changes_nothing() {
+        let mut book = PendingBook::new();
+        place_limit(&mut book, OrderId(1), p("100.00")).unwrap();
+        assert!(book
+            .amend(OrderId(99), q("1"), p("1.00"), Price::ZERO)
+            .is_none());
+        assert_eq!(book.len(), 1);
+        assert_eq!(book.get(OrderId(1)).unwrap().trigger_price, p("100.00"));
+    }
+
+    #[test]
+    fn an_amended_order_triggers_at_its_new_price_and_not_its_old_one() {
+        // The whole point of moving it. An order that changed where it
+        // says it rests but not where it actually fires would be worse
+        // than one that could not be moved at all.
+        let mut book = PendingBook::new();
+        place_limit(&mut book, OrderId(1), p("100.00")).unwrap();
+
+        book.amend(OrderId(1), q("1"), p("90.00"), Price::ZERO)
+            .unwrap();
+
+        // A buy limit is reached when the *ask* falls to it, so these
+        // ticks are written from the ask down.
+        //
+        // Just above the new level, nothing happens — including at the
+        // level it used to rest at, which it has left.
+        assert!(book.activated(BTC, p("99.99"), p("100.00")).is_empty());
+        assert!(book.activated(BTC, p("90.00"), p("90.01")).is_empty());
+        // And at the new one, it fires.
+        assert!(!book.activated(BTC, p("89.99"), p("90.00")).is_empty());
     }
 
     #[test]

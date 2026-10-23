@@ -2053,10 +2053,15 @@ impl Portfolio {
             }
             // A sign-in changes no balance. It is in the journal to be read,
             // not to be folded.
+            //
+            // Nor does amending a resting order: an order that has not
+            // filled has moved no money, and where it rests is the
+            // `pending` crate's business rather than this one's.
             Event::SessionChanged { .. }
             | Event::PendingOrderTriggered { .. }
             | Event::PriceSourceChanged { .. }
             | Event::OrderRejected { .. }
+            | Event::OrderAmended { .. }
             | Event::OrderCancelled { .. } => {}
         }
         Ok(applied)
