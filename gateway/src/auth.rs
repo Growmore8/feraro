@@ -24,7 +24,7 @@
 //! one is deliberate for now: a token that survives a restart has to be
 //! revocable across restarts too, and that is a store of its own.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -44,6 +44,143 @@ pub const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 const MAX_FAILURES: u32 = 5;
 /// How long it waits.
 const LOCKOUT: Duration = Duration::from_secs(60);
+
+/// One power an administrator can give a manager, or take away.
+///
+/// # Why a list and not a role
+///
+/// A role answers "what kind of person is this", and that was enough while
+/// a manager could do nothing with money at all. It stops being enough the
+/// moment one desk wants a manager who can approve deposits but not
+/// withdrawals, and another wants the reverse. Those are not two roles,
+/// they are one role with a switch, and inventing a role per combination
+/// ends with eleven roles nobody can tell apart.
+///
+/// # Why default-on rather than default-off
+///
+/// A manager exists to work a book. Starting them with nothing means every
+/// new manager is useless until somebody remembers to switch eleven things
+/// on, and the thing people do when faced with that is switch all eleven
+/// on without reading them. Starting from a working manager and taking
+/// powers away is the decision an operator actually wants to make.
+///
+/// The exceptions are the three that are never a manager's: see
+/// [`Power::manager_may`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Power {
+    /// Make a new client login.
+    CreateClients,
+    /// Approve money coming in.
+    ProcessDeposits,
+    /// Approve money going out.
+    ProcessWithdrawals,
+    /// Grant or withdraw a bonus.
+    CreditBonus,
+    /// Move money between a client's own accounts.
+    TransferFunds,
+    /// Place an order on a client's behalf.
+    ManualTrade,
+    /// Close a client's position.
+    CloseTrades,
+    /// Put a trade right after the fact.
+    EditTrades,
+    /// Read the audit trail.
+    ViewAudit,
+    /// Set what the house charges.
+    EditSpread,
+    /// Suspend an account, or let it trade again.
+    SuspendAccounts,
+}
+
+/// Every power, in the order an operator reads them.
+pub const POWERS: [Power; 11] = [
+    Power::CreateClients,
+    Power::ProcessDeposits,
+    Power::ProcessWithdrawals,
+    Power::CreditBonus,
+    Power::TransferFunds,
+    Power::ManualTrade,
+    Power::CloseTrades,
+    Power::EditTrades,
+    Power::SuspendAccounts,
+    Power::ViewAudit,
+    Power::EditSpread,
+];
+
+impl Power {
+    /// The name this power crosses the wire and the user store under.
+    ///
+    /// Stable: it is a key in a file somebody's permissions are stored
+    /// against, so renaming one silently restores a power that was taken
+    /// away.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Power::CreateClients => "createClients",
+            Power::ProcessDeposits => "processDeposits",
+            Power::ProcessWithdrawals => "processWithdrawals",
+            Power::CreditBonus => "creditBonus",
+            Power::TransferFunds => "transferFunds",
+            Power::ManualTrade => "manualTrade",
+            Power::CloseTrades => "closeTrades",
+            Power::EditTrades => "editTrades",
+            Power::ViewAudit => "viewAudit",
+            Power::EditSpread => "editSpread",
+            Power::SuspendAccounts => "suspendAccounts",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        POWERS.into_iter().find(|p| p.as_str() == name)
+    }
+
+    /// What to call it on screen.
+    pub const fn said(self) -> &'static str {
+        match self {
+            Power::CreateClients => "Create clients",
+            Power::ProcessDeposits => "Approve deposits",
+            Power::ProcessWithdrawals => "Approve withdrawals",
+            Power::CreditBonus => "Grant and remove bonus",
+            Power::TransferFunds => "Move money between accounts",
+            Power::ManualTrade => "Trade for a client",
+            Power::CloseTrades => "Close a client's positions",
+            Power::EditTrades => "Correct a trade",
+            Power::ViewAudit => "Read the audit trail",
+            Power::EditSpread => "Set markup and commission",
+            Power::SuspendAccounts => "Suspend and reinstate accounts",
+        }
+    }
+
+    /// Whether a manager may hold this power at all.
+    ///
+    /// Three are the platform's rather than a book's, and no switch makes
+    /// them a manager's:
+    ///
+    /// * **Reading the audit trail** would mean reading every other
+    ///   manager's clients, which is the one thing the scoping exists to
+    ///   prevent.
+    /// * **Setting markup and commission** is what every client on the
+    ///   platform is quoted, not one book's business.
+    /// * **Correcting a trade** rewrites what the journal says happened.
+    ///
+    /// They are in the list so the screen can show them greyed out with a
+    /// reason, rather than leaving an operator wondering where they went.
+    pub const fn manager_may(self) -> bool {
+        !matches!(
+            self,
+            Power::ViewAudit | Power::EditSpread | Power::EditTrades
+        )
+    }
+
+    /// Why a manager may never hold it, for the screen to show.
+    pub const fn why_not(self) -> Option<&'static str> {
+        match self {
+            Power::ViewAudit => Some("the audit trail covers every manager's clients"),
+            Power::EditSpread => Some("pricing is the platform's, not one book's"),
+            Power::EditTrades => Some("correcting a trade rewrites what happened"),
+            _ => None,
+        }
+    }
+}
 
 /// What a signed-in user may do.
 ///
@@ -157,6 +294,13 @@ pub struct User {
     pub manager: Option<UserId>,
     /// Argon2id PHC string. Never leaves this process.
     hash: String,
+    /// Powers an administrator has taken away from this manager.
+    ///
+    /// Only the refusals are stored, so a power added to the platform
+    /// later is held by every existing manager without anybody editing a
+    /// file — which is the right default, because a new power nobody has
+    /// heard of should not silently switch a working desk off.
+    withheld: BTreeSet<String>,
     /// The authenticator secret, once one has been set up.
     ///
     /// Held here and not in the journal for the same reason the password
@@ -214,6 +358,10 @@ struct StoredUser {
     /// alternative would lock everyone out at once.
     #[serde(default)]
     second: Option<Second>,
+    /// Absent in a store written before permissions existed: nothing
+    /// withheld, which is what every manager had then.
+    #[serde(default)]
+    withheld: BTreeSet<String>,
 }
 
 fn no_kyc() -> Kyc {
@@ -230,6 +378,7 @@ impl From<&User> for StoredUser {
             manager: u.manager.map(|m| m.0),
             hash: u.hash.clone(),
             second: u.second.clone(),
+            withheld: u.withheld.clone(),
         }
     }
 }
@@ -244,11 +393,32 @@ impl From<StoredUser> for User {
             manager: s.manager.map(UserId),
             hash: s.hash,
             second: s.second,
+            withheld: s.withheld,
         }
     }
 }
 
 impl User {
+    /// Whether this login holds one power.
+    ///
+    /// An administrator holds everything: the role is the point of it, and
+    /// the audit trail is what makes that safe. A client holds nothing —
+    /// none of these are a client's to hold, and the question is only ever
+    /// asked about a desk login. A manager holds everything a manager may,
+    /// less whatever has been taken away.
+    pub fn may(&self, power: Power) -> bool {
+        match self.role {
+            Role::Admin => true,
+            Role::Client => false,
+            Role::Manager => power.manager_may() && !self.withheld.contains(power.as_str()),
+        }
+    }
+
+    /// Every power, and whether this login holds it.
+    pub fn powers(&self) -> Vec<(Power, bool)> {
+        POWERS.into_iter().map(|p| (p, self.may(p))).collect()
+    }
+
     /// True when a working second factor is set up on this login.
     pub fn has_second_factor(&self) -> bool {
         self.second.as_ref().is_some_and(|s| s.confirmed)
@@ -361,6 +531,7 @@ impl Users {
             manager: None,
             hash,
             second: None,
+            withheld: BTreeSet::new(),
         });
         self.save()?;
         Ok(id)
@@ -582,6 +753,36 @@ impl Users {
             bail!("that code is wrong");
         }
         user.second = None;
+        self.save()
+    }
+
+    /// Gives a manager a power, or takes it away.
+    ///
+    /// Only a manager's permissions are stored. An administrator's are not
+    /// adjustable — a role that can be whittled down to nothing is a role
+    /// that can be used to lock everybody out of the platform, including
+    /// whoever is doing the whittling.
+    pub fn set_power(&mut self, id: UserId, power: Power, allowed: bool) -> Result<()> {
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.id == id)
+            .with_context(|| format!("no user {}", id.0))?;
+        if user.role != Role::Manager {
+            bail!("only a manager's permissions can be set");
+        }
+        if allowed && !power.manager_may() {
+            bail!(
+                "{} is not a manager's to hold: {}",
+                power.said(),
+                power.why_not().unwrap_or("it belongs to the platform")
+            );
+        }
+        if allowed {
+            user.withheld.remove(power.as_str());
+        } else {
+            user.withheld.insert(power.as_str().to_owned());
+        }
         self.save()
     }
 
@@ -903,6 +1104,143 @@ mod tests {
             .secret
             .clone();
         Totp::parse(&secret).unwrap().code_at(Totp::step_of(at))
+    }
+
+    // ── Permissions ───────────────────────────────────────────────────
+
+    #[test]
+    fn a_new_manager_can_work_a_book_without_anybody_switching_things_on() {
+        // Default-on, deliberately. Starting a manager with nothing means
+        // every new one is useless until eleven switches are found, and
+        // what people do when faced with that is turn all eleven on
+        // without reading them.
+        let s = Scratch::new("perms-default");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("desk@feraro.local", "a-long-enough-password", Role::Manager)
+            .unwrap();
+        let manager = users.by_id(id).unwrap();
+
+        assert!(manager.may(Power::ProcessDeposits));
+        assert!(manager.may(Power::ProcessWithdrawals));
+        assert!(manager.may(Power::CreditBonus));
+        assert!(manager.may(Power::ManualTrade));
+    }
+
+    #[test]
+    fn a_power_taken_away_stays_away_across_a_restart() {
+        let s = Scratch::new("perms-persist");
+        let id = {
+            let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+            let id = users
+                .add("desk@feraro.local", "a-long-enough-password", Role::Manager)
+                .unwrap();
+            users
+                .set_power(id, Power::ProcessWithdrawals, false)
+                .unwrap();
+            assert!(!users.by_id(id).unwrap().may(Power::ProcessWithdrawals));
+            id
+        };
+        let (users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let manager = users.by_id(id).unwrap();
+        assert!(!manager.may(Power::ProcessWithdrawals));
+        // And only that one.
+        assert!(manager.may(Power::ProcessDeposits));
+    }
+
+    #[test]
+    fn giving_a_power_back_gives_back_only_that_one() {
+        let s = Scratch::new("perms-restore");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("desk@feraro.local", "a-long-enough-password", Role::Manager)
+            .unwrap();
+        users.set_power(id, Power::CreditBonus, false).unwrap();
+        users.set_power(id, Power::ManualTrade, false).unwrap();
+        users.set_power(id, Power::CreditBonus, true).unwrap();
+
+        let manager = users.by_id(id).unwrap();
+        assert!(manager.may(Power::CreditBonus));
+        assert!(!manager.may(Power::ManualTrade));
+    }
+
+    #[test]
+    fn the_platforms_own_powers_cannot_be_given_to_a_manager() {
+        let s = Scratch::new("perms-impossible");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("desk@feraro.local", "a-long-enough-password", Role::Manager)
+            .unwrap();
+        for power in [Power::ViewAudit, Power::EditSpread, Power::EditTrades] {
+            assert!(
+                users.set_power(id, power, true).is_err(),
+                "{} was handed out",
+                power.as_str()
+            );
+            assert!(!users.by_id(id).unwrap().may(power));
+        }
+    }
+
+    #[test]
+    fn an_administrators_permissions_are_not_adjustable() {
+        // A role that can be whittled down to nothing is a way to lock
+        // everybody out of the platform, including whoever is whittling.
+        let s = Scratch::new("perms-admin");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("boss@feraro.local", "a-long-enough-password", Role::Admin)
+            .unwrap();
+        assert!(users.set_power(id, Power::ProcessDeposits, false).is_err());
+        assert!(users.by_id(id).unwrap().may(Power::ProcessDeposits));
+        // Including the ones no manager may hold.
+        assert!(users.by_id(id).unwrap().may(Power::ViewAudit));
+    }
+
+    #[test]
+    fn a_client_holds_none_of_these() {
+        let s = Scratch::new("perms-client");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("trader@example.com", "a-long-enough-password", Role::Client)
+            .unwrap();
+        let client = users.by_id(id).unwrap();
+        for power in POWERS {
+            assert!(!client.may(power), "a client held {}", power.as_str());
+        }
+        assert!(users.set_power(id, Power::ManualTrade, false).is_err());
+    }
+
+    #[test]
+    fn a_store_written_before_permissions_gives_a_manager_everything() {
+        // The only safe reading. The alternative silently switches off
+        // every working desk the moment the platform is upgraded.
+        let s = Scratch::new("perms-old-store");
+        std::fs::write(
+            s.file(),
+            r#"{"users":[{"id":1,"login":"desk@feraro.local","role":"manager","hash":"x"}]}"#,
+        )
+        .unwrap();
+        let (users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let manager = users.by_id(UserId(1)).unwrap();
+        for power in POWERS {
+            assert_eq!(
+                manager.may(power),
+                power.manager_may(),
+                "{} read wrong from an old store",
+                power.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn promoting_a_client_to_manager_starts_them_with_a_working_desk() {
+        let s = Scratch::new("perms-promote");
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("trader@example.com", "a-long-enough-password", Role::Client)
+            .unwrap();
+        users.set_role(id, Role::Manager).unwrap();
+        assert!(users.by_id(id).unwrap().may(Power::ProcessDeposits));
     }
 
     #[test]

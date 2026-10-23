@@ -952,6 +952,35 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
                   }
                 },
               },
+          // The switches, where the role that needs them is set. A
+          // manager's powers start on and are taken away one at a time,
+          // because starting a new manager with nothing means somebody
+          // has to find eleven switches before the desk can work — and
+          // what people do faced with that is turn all eleven on without
+          // reading them.
+          ...(owner?.role === 'manager'
+            ? ([
+                '-',
+                {
+                  label: 'What this desk may do',
+                  icon: '\u26bf',
+                  hint: `${owner.powers.filter((p) => p.held).length}/${owner.powers.filter((p) => p.possible).length}`,
+                  items: owner.powers.map((power) => ({
+                    label: power.said,
+                    checked: power.held,
+                    disabled: !power.possible,
+                    // The impossible ones stay on the list, greyed, with
+                    // the reason: a power that simply vanished would
+                    // leave an operator hunting for it.
+                    hint: power.whyNot ?? undefined,
+                    onPick: () => {
+                      gw.adminSetPower(owner.id, power.key, !power.held)
+                      after(250)
+                    },
+                  })),
+                },
+              ] as MenuItem[])
+            : []),
         ],
       })
 

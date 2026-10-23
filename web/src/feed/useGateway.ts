@@ -77,6 +77,7 @@ export interface GatewayView extends GatewayState {
     preferred: boolean
   }): void
   forgetPayoutMethod(id: number): void
+  adminSetPower(user: number, power: string, allowed: boolean): void
   markups(): void
   adminSetMarkup(instrument: number, markup: string): void
   adminSetCommission(instrument: number, commission: string): void
@@ -374,6 +375,13 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     clientRef.current?.forgetPayoutMethod(id)
   }, [])
 
+  const adminSetPower = useCallback(
+    (user: number, power: string, allowed: boolean) => {
+      clientRef.current?.adminSetPower(user, power, allowed)
+    },
+    [],
+  )
+
   const markups = useCallback(() => {
     clientRef.current?.markups()
   }, [])
@@ -469,6 +477,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,
+      adminSetPower,
       markups,
       adminSetMarkup,
       adminSetCommission,
@@ -516,6 +525,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,
+      adminSetPower,
       markups,
       adminSetMarkup,
       adminSetCommission,

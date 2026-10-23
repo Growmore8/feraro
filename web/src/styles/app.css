@@ -1846,3 +1846,18 @@
 .table.mw td.num {
   white-space: nowrap;
 }
+
+
+/* ── A wrapper that disappears ──
+
+   It exists only to catch a right-click on behalf of whatever it holds,
+   so it must not change how that thing lays out: it takes the space it
+   was given and passes the scrolling through. Without this the market
+   watch inside it stops filling its panel and the list cannot scroll. */
+
+.fill {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-grow: 1;
+}

@@ -73,6 +73,14 @@ replay. That is the cost of this architecture and it is paid deliberately.
       close was charged, because the hedged path bypassed the fill and the
       event had nowhere to put the figure. A new tag carries it; the old
       one decodes as zero, because those closes really were free. *(engine)*
+- [x] **Per-manager permissions** — an administrator gives a manager
+      powers one at a time and takes them back: approve deposits, approve
+      withdrawals, grant bonus, move money, trade for a client, close
+      their positions, create clients, suspend accounts. Default-on,
+      because a manager who starts with nothing is one somebody switches
+      eleven things on for without reading them. Three are nobody's to be
+      given — the audit trail, pricing, and correcting a trade — and the
+      screen says why rather than hiding them.
 
 ## Next, in order
 

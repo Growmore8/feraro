@@ -115,6 +115,18 @@ pub enum ClientMessage {
     /// one. A null manager unassigns.
     #[serde(rename_all = "camelCase")]
     AdminAssignManager { user: u64, manager: Option<u64> },
+    /// Administrator: give a manager one power, or take it away.
+    ///
+    /// One at a time rather than a whole map, so the audit of who changed
+    /// what reads as a list of decisions rather than a diff somebody has
+    /// to work out.
+    #[serde(rename_all = "camelCase")]
+    AdminSetPower {
+        user: u64,
+        /// The power's stable name, as `AdminUserDto::powers` gives it.
+        power: String,
+        allowed: bool,
+    },
     /// Administrator: promote a login to manager, or back to client.
     #[serde(rename_all = "camelCase")]
     AdminSetRole { user: u64, role: String },
@@ -491,6 +503,21 @@ pub struct AdminAccountDto {
     pub demo_expires_at: Option<i64>,
 }
 
+/// One power a desk login holds, or does not.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PowerDto {
+    /// Stable name, which is what `adminSetPower` takes back.
+    pub key: &'static str,
+    /// What to call it on screen.
+    pub said: &'static str,
+    pub held: bool,
+    /// False when no switch can give it to a manager.
+    pub possible: bool,
+    /// Why not, when it cannot.
+    pub why_not: Option<&'static str>,
+}
+
 /// One login, as the administrator's people list shows it.
 ///
 /// The login *is* the email address: one person, one address, one set of
@@ -512,6 +539,12 @@ pub struct AdminUserDto {
     pub manager: Option<u64>,
     /// That manager's login, joined here so the screen need not look it up.
     pub manager_login: Option<String>,
+    /// Every power and whether this login holds it.
+    ///
+    /// Sent for a manager only: an administrator holds everything by
+    /// definition, and a client holds none of these, so a list against
+    /// either is a row of switches that do nothing.
+    pub powers: Vec<PowerDto>,
 }
 
 /// What the house adds to one instrument's price.

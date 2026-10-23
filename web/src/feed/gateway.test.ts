@@ -487,6 +487,83 @@ describe('the books', () => {
 })
 
 
+describe('what a desk may do', () => {
+  it('reads a manager’s powers, and which cannot be given', () => {
+    const frame = JSON.stringify({
+      type: 'adminBook',
+      accounts: [],
+      users: [
+        {
+          id: 7,
+          login: 'desk@feraro.local',
+          role: 'manager',
+          kyc: 'none',
+          manager: null,
+          managerLogin: null,
+          powers: [
+            { key: 'processDeposits', said: 'Approve deposits', held: true, possible: true, whyNot: null },
+            { key: 'processWithdrawals', said: 'Approve withdrawals', held: false, possible: true, whyNot: null },
+            {
+              key: 'viewAudit',
+              said: 'Read the audit trail',
+              held: false,
+              possible: false,
+              whyNot: 'the audit trail covers every manager’s clients',
+            },
+          ],
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    const desk = patch.users![0]!
+    expect(desk.powers.find((p) => p.key === 'processDeposits')!.held).toBe(true)
+    expect(desk.powers.find((p) => p.key === 'processWithdrawals')!.held).toBe(false)
+    // The impossible one stays on the list with its reason, so the screen
+    // can grey it out rather than leaving somebody hunting for it.
+    const audit = desk.powers.find((p) => p.key === 'viewAudit')!
+    expect(audit.possible).toBe(false)
+    expect(audit.whyNot).toMatch(/audit trail/)
+  })
+
+  it('gives an administrator and a client no switches at all', () => {
+    // Neither is a row of switches that would do anything: an
+    // administrator holds everything, a client holds none of it.
+    const frame = JSON.stringify({
+      type: 'adminBook',
+      accounts: [],
+      users: [
+        { id: 1, login: 'boss@feraro.local', role: 'admin', kyc: 'none', manager: null, managerLogin: null },
+        { id: 2, login: 'trader@example.com', role: 'client', kyc: 'approved', manager: 7, managerLogin: 'desk@feraro.local' },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.users![0]!.powers).toEqual([])
+    expect(patch.users![1]!.powers).toEqual([])
+  })
+
+  it('reads a gateway that predates permissions as nothing forbidden', () => {
+    // Silence must not grey out every switch on the screen.
+    const frame = JSON.stringify({
+      type: 'adminBook',
+      accounts: [],
+      users: [
+        {
+          id: 7,
+          login: 'desk@feraro.local',
+          role: 'manager',
+          kyc: 'none',
+          manager: null,
+          managerLogin: null,
+          powers: [{ key: 'processDeposits', said: 'Approve deposits', held: true }],
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.users![0]!.powers[0]!.possible).toBe(true)
+    expect(patch.users![0]!.powers[0]!.whyNot).toBeNull()
+  })
+})
+
 describe('two-factor', () => {
   it('reads whether the login has one, and whether it ought to', () => {
     const frame = JSON.stringify({

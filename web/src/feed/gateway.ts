@@ -200,6 +200,27 @@ export interface AdminUser {
   readonly manager: number | null
   /** That manager's login, joined by the gateway so this need not look. */
   readonly managerLogin: string | null
+  /**
+   * Every power and whether this login holds it.
+   *
+   * Empty for anybody but a manager: an administrator holds everything by
+   * definition and a client holds none of it, so a row of switches
+   * against either would do nothing.
+   */
+  readonly powers: readonly Power[]
+}
+
+/** One power a desk login holds, or does not. */
+export interface Power {
+  /** Stable name, which is what the gateway takes back. */
+  readonly key: string
+  /** What to call it on screen. */
+  readonly said: string
+  readonly held: boolean
+  /** False when no switch can give it to a manager. */
+  readonly possible: boolean
+  /** Why not, when it cannot. */
+  readonly whyNot: string | null
 }
 
 /**
@@ -587,6 +608,19 @@ function authMessage(reason: string, retryInSeconds: number | null): string {
   }
 }
 
+function parsePower(raw: Record<string, unknown>): Power {
+  return {
+    key: String(raw['key'] ?? ''),
+    said: String(raw['said'] ?? ''),
+    held: raw['held'] === true,
+    // Absent means possible: a gateway from before this existed had no
+    // impossible powers, and reading silence as "forbidden" would grey
+    // out every switch on the screen.
+    possible: raw['possible'] !== false,
+    whyNot: typeof raw['whyNot'] === 'string' ? raw['whyNot'] : null,
+  }
+}
+
 function parseAdminAccount(raw: Record<string, unknown>): AdminAccount {
   const owner = raw['owner']
   const level = raw['marginLevelBp']
@@ -872,6 +906,9 @@ export function handleFrame(
               : Number(u['manager']),
             managerLogin:
               typeof u['managerLogin'] === 'string' ? u['managerLogin'] : null,
+            powers: Array.isArray(u['powers'])
+              ? (u['powers'] as Record<string, unknown>[]).map(parsePower)
+              : [],
           }))
         : []
       return { patch: { book: accounts, users } }
@@ -1371,6 +1408,16 @@ export class GatewayClient {
   /** Turns one off, which needs a current code from it. */
   stopSecondFactor(code: string): void {
     this.send({ type: 'stopSecondFactor', code })
+  }
+
+  /**
+   * Administrator: give a manager one power, or take it away.
+   *
+   * One at a time rather than a whole map, so the audit of who changed
+   * what reads as a list of decisions rather than a diff.
+   */
+  adminSetPower(user: number, power: string, allowed: boolean): void {
+    this.send({ type: 'adminSetPower', user, power, allowed })
   }
 
   /** What the house charges, per instrument. */

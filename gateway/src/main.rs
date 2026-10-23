@@ -23,6 +23,7 @@ mod protocol;
 mod snapshot;
 mod totp;
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
@@ -46,7 +47,8 @@ use crate::markups::Markups;
 use crate::payments::{Payments, Rail};
 use crate::protocol::{
     instrument_id, kind_from, price_str, side_from, AccountSummaryDto, AdminUserDto, BarDto,
-    ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, PayoutMethodDto, ServerMessage,
+    ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, PayoutMethodDto, PowerDto,
+    ServerMessage,
 };
 
 /// The most audit lines the gateway will send in one answer.
@@ -625,6 +627,14 @@ struct Signed {
     role: Role,
     /// Accounts this session may act on.
     allowed: Vec<AccountId>,
+    /// What this login has been given, read when it signed in.
+    ///
+    /// Held on the session rather than looked up per message, so one
+    /// action cannot be judged against two different sets of rules because
+    /// an administrator clicked something halfway through. The cost is
+    /// that a change lands on the manager's next sign-in, which is also
+    /// the behaviour an operator can reason about.
+    powers: BTreeSet<auth::Power>,
     /// The one it is acting on.
     selected: AccountId,
 }
@@ -1031,6 +1041,7 @@ async fn session(
                             | ClientMessage::AdminSetKyc { .. }
                             | ClientMessage::AdminAssignManager { .. }
                             | ClientMessage::AdminSetRole { .. }
+                            | ClientMessage::AdminSetPower { .. }
                             | ClientMessage::AdminOpenAccount { .. }
                             | ClientMessage::AdminPutPaymentMethod { .. }
                             | ClientMessage::AdminRemovePaymentMethod { .. }
@@ -1421,6 +1432,45 @@ async fn settle(
     approve: bool,
     detail: &str,
 ) -> Result<ServerMessage> {
+    // Which power this needs depends on what is being approved, and the
+    // message carried only a request id — so the kind is read first, and
+    // the permission checked before anything is settled. A refusal then
+    // leaves the request in the queue for somebody who may decide it.
+    let asked_kind = gate
+        .payments
+        .lock()
+        .expect("the payment lock")
+        .requests()
+        .iter()
+        .find(|r| r.id == id)
+        .map(|r| r.kind);
+
+    if approve {
+        let Some(asked_kind) = asked_kind else {
+            return Ok(ServerMessage::AdminResult {
+                done: false,
+                detail: format!("Refused: there is no request {id}."),
+            });
+        };
+        let needed = match asked_kind {
+            payments::Kind::Withdrawal => auth::Power::ProcessWithdrawals,
+            payments::Kind::Deposit => auth::Power::ProcessDeposits,
+            payments::Kind::BonusIn | payments::Kind::BonusOut => auth::Power::CreditBonus,
+            payments::Kind::InsuranceIn | payments::Kind::InsuranceOut => {
+                auth::Power::TransferFunds
+            }
+        };
+        if !session.is_admin() && !session.powers.contains(&needed) {
+            return Ok(ServerMessage::AdminResult {
+                done: false,
+                detail: format!(
+                    "Refused: your desk has not been given {}.",
+                    needed.said().to_lowercase()
+                ),
+            });
+        }
+    }
+
     let settled =
         gate.payments
             .lock()
@@ -1754,12 +1804,62 @@ fn describe_request(
 /// Everything else — the overview, an account's activity, suspending,
 /// renewing a demo, switching hedging — a manager may do, and the scoping in
 /// [`accounts_for`] decides *whose*.
+/// The power a message needs, when it needs one.
+///
+/// A message with no power here is either a client's own, or one the gate
+/// below decides on some other ground — being on the right book, usually.
+/// Returning `None` is not "anybody may": it is "this is not the question
+/// permissions answer".
+fn power_for(message: &ClientMessage) -> Option<auth::Power> {
+    use auth::Power;
+    Some(match message {
+        ClientMessage::AdminCreateUser { .. } => Power::CreateClients,
+        ClientMessage::AdminAudit { .. } => Power::ViewAudit,
+        ClientMessage::AdminSetMarkup { .. } | ClientMessage::AdminSetCommission { .. } => {
+            Power::EditSpread
+        }
+        ClientMessage::AdminAmend { .. } => Power::EditTrades,
+        ClientMessage::AdminRaise { kind, .. } => match payments::Kind::parse(kind) {
+            Some(payments::Kind::BonusIn | payments::Kind::BonusOut) => Power::CreditBonus,
+            // Insurance is the client's own money moving between their own
+            // pots, so it is judged as a transfer rather than as a grant.
+            _ => Power::TransferFunds,
+        },
+        // `AdminSettle` is deliberately absent: it carries a request id,
+        // not a kind, so the gate cannot tell approving a withdrawal from
+        // approving a deposit. That check happens in `settle`, which has
+        // read the request and knows which it is.
+        ClientMessage::AdminSettleDeposit { credit: true, .. } => Power::ProcessDeposits,
+        ClientMessage::Transfer { .. } => Power::TransferFunds,
+        ClientMessage::PlaceOrder { .. } => Power::ManualTrade,
+        ClientMessage::ClosePosition { .. } | ClientMessage::CancelOrder { .. } => {
+            Power::CloseTrades
+        }
+        ClientMessage::AdminAction { kind, .. } => match kind.as_str() {
+            "deposit" => Power::ProcessDeposits,
+            "withdraw" => Power::ProcessWithdrawals,
+            "credit" => Power::CreditBonus,
+            "suspend" | "reinstate" => Power::SuspendAccounts,
+            _ => return None,
+        },
+        _ => return None,
+    })
+}
+
 fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static str> {
     if matches!(session.role, Role::Client) {
         return Some("this needs the desk");
     }
     if session.is_admin() {
         return None;
+    }
+    // A manager's own permissions come first: an administrator may have
+    // taken a power away that the rules below would otherwise allow, and
+    // the whole point of the switch is that it wins.
+    if let Some(power) = power_for(message) {
+        if !session.powers.contains(&power) {
+            return Some("your desk has not been given that");
+        }
     }
     match message {
         ClientMessage::AdminBooks { .. } | ClientMessage::AdminAudit { .. } => {
@@ -1779,18 +1879,7 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         }
         // Confirming money arrived credits an account, which is the same
         // decision as a deposit and goes the same way.
-        ClientMessage::AdminSettleDeposit { credit, .. } if *credit => {
-            Some("money and going live are an administrator's to decide")
-        }
-        // Approving anything that moves money, and granting a bonus or
-        // insurance in the first place, are an administrator's.
-        ClientMessage::AdminSettle { approve, .. } if *approve => {
-            Some("money and going live are an administrator's to decide")
-        }
-        ClientMessage::AdminRaise { .. } => {
-            Some("money and going live are an administrator's to decide")
-        }
-        ClientMessage::AdminCreateUser { .. }
+        ClientMessage::AdminSetPower { .. }
         | ClientMessage::AdminSetPassword { .. }
         | ClientMessage::AdminSetKyc { .. }
         | ClientMessage::AdminAssignManager { .. }
@@ -1803,9 +1892,10 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         }
         ClientMessage::AdminAction { account, kind, .. } => {
             match kind.as_str() {
-                "deposit" | "withdraw" | "credit" | "live" | "demo" => {
-                    Some("money and going live are an administrator's to decide")
-                }
+                // Going live is not a permission anybody is given: it
+                // turns practice money into money a client can withdraw,
+                // and it is the one account change with no way back.
+                "live" | "demo" => Some("going live is an administrator's to decide"),
                 // Allowed in kind, but only on an account in their book: the
                 // kind of a message says what is being done, never to whom.
                 _ if !session.allowed.contains(&AccountId(*account)) => {
@@ -1860,12 +1950,27 @@ async fn build_session(
             retry_in_seconds: None,
         }));
     };
+    let powers = gate
+        .users
+        .lock()
+        .expect("the user store lock")
+        .by_id(user)
+        .map(|u| {
+            u.powers()
+                .into_iter()
+                .filter(|(_, held)| *held)
+                .map(|(p, _)| p)
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(Ok(Signed {
         token,
         user,
         login,
         role,
         allowed: visible.iter().map(|a| AccountId(a.id)).collect(),
+        powers,
         selected,
     }))
 }
@@ -2076,8 +2181,58 @@ async fn administer(
                             .manager
                             .and_then(|m| users.by_id(m))
                             .map(|m| m.login.clone()),
+                        // Only a manager's. An administrator holds
+                        // everything by definition and a client holds
+                        // none of it, so a list against either is a row
+                        // of switches that do nothing.
+                        powers: if u.role == auth::Role::Manager {
+                            u.powers()
+                                .into_iter()
+                                .map(|(p, held)| PowerDto {
+                                    key: p.as_str(),
+                                    said: p.said(),
+                                    held,
+                                    possible: p.manager_may(),
+                                    why_not: p.why_not(),
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        },
                     })
                     .collect(),
+            })
+        }
+
+        ClientMessage::AdminSetPower {
+            user,
+            power,
+            allowed,
+        } => {
+            let Some(power) = auth::Power::parse(&power) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: "Not a permission I know.".to_owned(),
+                });
+            };
+            let done = gate.users.lock().expect("the user store lock").set_power(
+                UserId(user),
+                power,
+                allowed,
+            );
+            Ok(match done {
+                Ok(()) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!(
+                        "{} {} for user {user}. It takes effect when they next sign in.",
+                        power.said(),
+                        if allowed { "allowed" } else { "withheld" }
+                    ),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
             })
         }
 
@@ -2942,7 +3097,155 @@ mod tests {
         )
     }
 
-    /// A session as the gate would have built it.
+    #[test]
+    fn a_power_taken_away_is_refused_and_the_rest_still_work() {
+        // The whole point of the switch. An administrator takes one power
+        // off a manager and everything else they do carries on.
+        let full = session_as(Role::Manager, &[1001, 1002]);
+        let no_deposits =
+            session_without(Role::Manager, &[1001, 1002], auth::Power::ProcessDeposits);
+
+        assert_eq!(desk_refusal(&full, &act(1001, "deposit")), None);
+        assert!(desk_refusal(&no_deposits, &act(1001, "deposit")).is_some());
+
+        // Withdrawals are a different switch, and this one is still on.
+        assert_eq!(desk_refusal(&no_deposits, &act(1001, "withdraw")), None);
+        // And the ordinary work of a book is untouched.
+        assert_eq!(desk_refusal(&no_deposits, &act(1001, "suspend")), None);
+        assert_eq!(
+            desk_refusal(&no_deposits, &ClientMessage::AdminOverview),
+            None
+        );
+    }
+
+    #[test]
+    fn each_kind_of_money_has_its_own_switch() {
+        for (power, kind) in [
+            (auth::Power::ProcessDeposits, "deposit"),
+            (auth::Power::ProcessWithdrawals, "withdraw"),
+            (auth::Power::CreditBonus, "credit"),
+            (auth::Power::SuspendAccounts, "suspend"),
+        ] {
+            let without = session_without(Role::Manager, &[1001], power);
+            assert!(
+                desk_refusal(&without, &act(1001, kind)).is_some(),
+                "{kind} went through without {}",
+                power.as_str()
+            );
+            // Every other kind still goes through, so one switch does not
+            // quietly turn several things off.
+            for (other, other_kind) in [
+                (auth::Power::ProcessDeposits, "deposit"),
+                (auth::Power::ProcessWithdrawals, "withdraw"),
+                (auth::Power::CreditBonus, "credit"),
+                (auth::Power::SuspendAccounts, "suspend"),
+            ] {
+                if other == power {
+                    continue;
+                }
+                assert_eq!(
+                    desk_refusal(&without, &act(1001, other_kind)),
+                    None,
+                    "taking {} away also stopped {other_kind}",
+                    power.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_administrator_keeps_everything_whatever_the_switches_say() {
+        // An administrator with no powers on the session is still an
+        // administrator: the role is checked first. A role that could be
+        // whittled to nothing is a way to lock everybody out, including
+        // whoever is doing the whittling.
+        let mut boss = session_as(Role::Admin, &[1001]);
+        boss.powers.clear();
+        for kind in ["deposit", "withdraw", "credit", "live", "suspend"] {
+            assert_eq!(
+                desk_refusal(&boss, &act(1001, kind)),
+                None,
+                "an administrator was refused {kind}"
+            );
+        }
+        assert_eq!(
+            desk_refusal(&boss, &ClientMessage::AdminAudit { limit: 10 }),
+            None
+        );
+    }
+
+    #[test]
+    fn a_manager_may_never_hold_the_platforms_own_powers() {
+        // Three are not a book's business whatever anybody switches: the
+        // audit trail covers every manager's clients, pricing is what
+        // every client on the platform is quoted, and correcting a trade
+        // rewrites what the journal says happened.
+        let manager = session_as(Role::Manager, &[1001]);
+        for power in [
+            auth::Power::ViewAudit,
+            auth::Power::EditSpread,
+            auth::Power::EditTrades,
+        ] {
+            assert!(
+                !power.manager_may(),
+                "{} should not be a manager's",
+                power.as_str()
+            );
+            assert!(
+                !manager.powers.contains(&power),
+                "a full manager session held {}",
+                power.as_str()
+            );
+            assert!(
+                power.why_not().is_some(),
+                "{} has no reason",
+                power.as_str()
+            );
+        }
+
+        assert!(desk_refusal(&manager, &ClientMessage::AdminAudit { limit: 10 }).is_some());
+        assert!(desk_refusal(
+            &manager,
+            &ClientMessage::AdminSetMarkup {
+                instrument: 1,
+                markup: "0.5".to_owned()
+            }
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn every_power_has_a_stable_name_and_reads_back() {
+        // The names are keys in a file somebody's permissions are stored
+        // against. Renaming one silently restores a power that was taken
+        // away, so they are pinned here rather than trusted.
+        let names: Vec<&str> = auth::POWERS.into_iter().map(|p| p.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "createClients",
+                "processDeposits",
+                "processWithdrawals",
+                "creditBonus",
+                "transferFunds",
+                "manualTrade",
+                "closeTrades",
+                "editTrades",
+                "suspendAccounts",
+                "viewAudit",
+                "editSpread",
+            ]
+        );
+        for power in auth::POWERS {
+            assert_eq!(auth::Power::parse(power.as_str()), Some(power));
+            assert!(!power.said().is_empty());
+        }
+        assert_eq!(auth::Power::parse("whatever"), None);
+    }
+
+    /// A session as the gate would have built it, holding everything a
+    /// manager may. The tests that care about one power missing build
+    /// their own with [`session_without`].
     fn session_as(role: Role, allowed: &[u64]) -> Signed {
         Signed {
             token: "t".to_owned(),
@@ -2950,8 +3253,19 @@ mod tests {
             login: "boss@feraro.local".to_owned(),
             role,
             allowed: allowed.iter().copied().map(AccountId).collect(),
+            powers: auth::POWERS
+                .into_iter()
+                .filter(|p| p.manager_may())
+                .collect(),
             selected: AccountId(allowed.first().copied().unwrap_or(0)),
         }
+    }
+
+    /// The same, with one power taken away.
+    fn session_without(role: Role, allowed: &[u64], gone: auth::Power) -> Signed {
+        let mut s = session_as(role, allowed);
+        s.powers.remove(&gone);
+        s
     }
 
     fn act(account: u64, kind: &str) -> ClientMessage {
@@ -2997,8 +3311,19 @@ mod tests {
             );
         }
 
-        // Money in and out, and going live, are an administrator's.
-        for kind in ["deposit", "withdraw", "credit", "live", "demo"] {
+        // Money in and out is a manager's when their desk has been given
+        // it. This manager holds everything a manager may.
+        for kind in ["deposit", "withdraw", "credit"] {
+            assert_eq!(
+                desk_refusal(&manager, &act(1001, kind)),
+                None,
+                "a manager with the power was refused {kind}"
+            );
+        }
+
+        // Going live is nobody's to be given: it turns practice money into
+        // money a client can withdraw, and there is no way back.
+        for kind in ["live", "demo"] {
             assert!(
                 desk_refusal(&manager, &act(1001, kind)).is_some(),
                 "a manager was allowed to {kind}"
@@ -3007,10 +3332,6 @@ mod tests {
 
         // The powers that make a book, rather than work one.
         for message in [
-            ClientMessage::AdminCreateUser {
-                login: "new@example.com".to_owned(),
-                password: "a-password-1".to_owned(),
-            },
             ClientMessage::AdminSetPassword {
                 user: 3,
                 password: "a-password-1".to_owned(),
@@ -3026,6 +3347,11 @@ mod tests {
             ClientMessage::AdminSetRole {
                 user: 3,
                 role: "manager".to_owned(),
+            },
+            ClientMessage::AdminSetPower {
+                user: 3,
+                power: "processDeposits".to_owned(),
+                allowed: true,
             },
         ] {
             assert!(
