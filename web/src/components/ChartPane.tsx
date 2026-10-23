@@ -16,13 +16,14 @@
 
 import { useEffect, useMemo } from 'react'
 import { PriceChart } from './PriceChart'
+import { useState } from 'react'
 import type { PriceLine } from './PriceChart'
 import type { GatewayView } from '../feed/useGateway'
 import type { Interval } from '../feed/types'
 import { useCandles } from '../feed/useFeed'
 import type { Instrument } from '../lib/domain'
 import { INSTRUMENTS, instrumentById } from '../lib/instruments'
-import { macd } from '../lib/indicators'
+import { macd, rsi } from '../lib/indicators'
 import type { Price } from '../lib/money'
 import { showPrice } from '../lib/money'
 import './ChartPane.css'
@@ -65,6 +66,9 @@ export interface ChartPaneProps {
   readonly overlay?: React.ReactNode
 }
 
+/** What each study is called on the rail. */
+const STUDY_NAME = { macd: 'MACD', rsi: 'RSI' } as const
+
 export function ChartPane({
   gw,
   instrument,
@@ -99,12 +103,33 @@ export function ChartPane({
   const candles = onExchange ? exchangeBars.candles : gatewayBars
   const loading = onExchange ? exchangeBars.loading : !gw.connected
   const error = onExchange ? exchangeBars.error : null
-  const macdBars = useMemo(() => macd(candles), [candles])
+  // Computed only when it is being shown: both walk every bar, and a
+  // chart redraws on every tick.
+  /**
+   * Which study is drawn under the candles, or none.
+   *
+   * One at a time, because the panel under the price is one panel. Cubex
+   * lists several down the side and shows the one that is on; stacking
+   * them would take the chart the trader came for.
+   */
+  const [study, setStudy] = useState<'macd' | 'rsi' | null>('macd')
+
+  const macdBars = useMemo(
+    () => (study === 'macd' ? macd(candles) : []),
+    [candles, study],
+  )
+  const rsiBars = useMemo(
+    () => (study === 'rsi' ? rsi(candles) : []),
+    [candles, study],
+  )
   const latest = candles.at(-1)
+
 
   return (
     <>
       <div className="chart-tools">
+        <span className="chart-sym">{instrument.symbol}</span>
+        <span className="sep" />
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf}
@@ -115,10 +140,8 @@ export function ChartPane({
             {TF_LABEL[tf]}
           </button>
         ))}
-        <span className="sep" />
-        <span className="cap">{instrument.symbol}</span>
         {latest ? (
-          <span className="mono dim" style={{ fontSize: 10, marginLeft: 10 }}>
+          <span className="mono dim chart-ohlc">
             O {showPrice(latest.open, instrument.displayDigits)} &nbsp; H{' '}
             {showPrice(latest.high, instrument.displayDigits)} &nbsp; L{' '}
             {showPrice(latest.low, instrument.displayDigits)} &nbsp; C{' '}
@@ -130,6 +153,27 @@ export function ChartPane({
       </div>
 
       <div className="chart-area">
+        {/* The indicator rail, down the left edge, as Cubex has it. Every
+            one of these was already computed and tested; only MACD was
+            ever drawn, and it was drawn whether anybody wanted it or
+            not. */}
+        <div className="chart-rail">
+          {(['macd', 'rsi'] as const).map((which) => (
+            <button
+              key={which}
+              type="button"
+              className={`rail-btn${study === which ? ' on' : ''}`}
+              title={
+                study === which
+                  ? `Hide ${STUDY_NAME[which]}`
+                  : `Show ${STUDY_NAME[which]}`
+              }
+              onClick={() => setStudy(study === which ? null : which)}
+            >
+              {STUDY_NAME[which]}
+            </button>
+          ))}
+        </div>
         {overlay}
         {!onExchange && candles.length < 2 ? (
           <p className="chart-msg">
@@ -144,6 +188,7 @@ export function ChartPane({
           <PriceChart
             candles={candles}
             macd={macdBars}
+            rsi={rsiBars}
             last={last ?? latest.close}
             displayDigits={instrument.displayDigits}
             lines={lines}

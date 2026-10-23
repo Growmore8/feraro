@@ -48,6 +48,7 @@ const PAD_L = 8
 export function PriceChart({
   candles,
   macd,
+  rsi,
   lines = [],
   last,
   displayDigits,
@@ -56,6 +57,14 @@ export function PriceChart({
 }: {
   candles: readonly Candle[]
   macd?: readonly MacdPoint[]
+  /**
+   * Relative strength, drawn in the same panel MACD uses.
+   *
+   * One study at a time: the panel under the price is one panel, and
+   * stacking a second would take the chart the trader came for. Nulls are
+   * the opening bars, before there is enough history to have a reading.
+   */
+  rsi?: readonly (number | null)[]
   lines?: readonly PriceLine[]
   last: Price
   displayDigits: number
@@ -93,6 +102,9 @@ export function PriceChart({
   })
 
   const macdBase = MACD_TOP + MACD_H / 2
+  // RSI runs 0 to 100 in the same band MACD uses, so the two studies
+  // swap without the chart above them moving.
+  const rsiY = (v: number) => MACD_TOP + MACD_H - (v / 100) * MACD_H
   const macdScale = macd && macd.length > 0
     ? (MACD_H / 2 - 6) / Math.max(...macd.flatMap((m) => [Math.abs(m.histogram), Math.abs(m.macd), Math.abs(m.signal)]), 1)
     : 1
@@ -189,7 +201,60 @@ export function PriceChart({
         {showPrice(last, displayDigits)}
       </text>
 
-      {macd ? (
+      {rsi && rsi.length > 0 ? (
+        <>
+          <line x1={0} y1={368} x2={W} y2={368} stroke="var(--chart-grid)" strokeWidth={1} />
+          <text x={PAD_L} y={386} fontFamily="var(--mono)" fontSize={10} fill="var(--chart-axis)">
+            RSI (14)
+          </text>
+          {/* Seventy and thirty, because those are the two levels anybody
+              reading an RSI is looking for. The band between them is
+              shaded so the eye finds them without reading the numbers. */}
+          <rect
+            x={PAD_L}
+            y={rsiY(70)}
+            width={AXIS_X - PAD_L}
+            height={Math.max(0, rsiY(30) - rsiY(70))}
+            fill="var(--chart-grid)"
+            opacity={0.35}
+          />
+          {[70, 50, 30].map((level) => (
+            <g key={level}>
+              <line
+                x1={PAD_L}
+                y1={rsiY(level)}
+                x2={AXIS_X}
+                y2={rsiY(level)}
+                stroke="var(--chart-axis)"
+                strokeWidth={level === 50 ? 1 : 0.6}
+                strokeDasharray={level === 50 ? undefined : '3 3'}
+              />
+              <text
+                x={AXIS_X + 4}
+                y={rsiY(level) + 3}
+                fontFamily="var(--mono)"
+                fontSize={9}
+                fill="var(--chart-axis)"
+              >
+                {level}
+              </text>
+            </g>
+          ))}
+          <polyline
+            fill="none"
+            stroke="var(--macd-line)"
+            strokeWidth={1.4}
+            points={rsi
+              .map((v, i) =>
+                v === null ? null : `${centre(i).toFixed(1)},${rsiY(v).toFixed(1)}`,
+              )
+              .filter((point): point is string => point !== null)
+              .join(' ')}
+          />
+        </>
+      ) : null}
+
+      {macd && macd.length > 0 ? (
         <>
           <line x1={0} y1={368} x2={W} y2={368} stroke="var(--chart-grid)" strokeWidth={1} />
           <text x={PAD_L} y={386} fontFamily="var(--mono)" fontSize={10} fill="var(--chart-axis)">

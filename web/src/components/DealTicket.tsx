@@ -242,21 +242,12 @@ export function DealTicket({
 
   return (
     <div className={`dt${blocked ? ' dt-blocked' : ''}`}>
-      <button
-        type="button"
-        className="dt-fold"
-        onClick={() => setOpen(false)}
-        aria-label="Hide the deal ticket"
-        title="Hide the deal ticket"
-      >
-        −
-      </button>
-
       {arrow('sell', 'down')}
       {priceButton(sell, 'sell')}
       {arrow('sell', 'up')}
 
       <span className="dt-size">
+        <span className="cap dt-lots">Lots</span>
         <span className="stepper">
           <button
             type="button"
@@ -315,6 +306,16 @@ export function DealTicket({
           <>on {account}</>
         )}
       </span>
+
+      <button
+        type="button"
+        className="dt-fold"
+        onClick={() => setOpen(false)}
+        aria-label="Hide the deal ticket"
+        title="Hide the deal ticket"
+      >
+        ‹
+      </button>
     </div>
   )
 }

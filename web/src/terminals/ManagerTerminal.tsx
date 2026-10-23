@@ -80,6 +80,9 @@ import { DataTable, Pill } from '../components/primitives'
 import type { Column } from '../components/primitives'
 import type {
   AdminAccount,
+  AdminUser,
+  DepositRequest,
+  StatementLine,
   GatewayPending,
   AdminActionKind,
   AmendReason,
@@ -125,7 +128,46 @@ const DOTS = '\u2026'
 /** How often the book refreshes itself while the screen is open. */
 const REFRESH_MS = 4_000
 
-type Tab = 'Trade' | 'History' | 'Net Trade' | 'Requests' | 'Audit'
+/**
+ * The toolbox tabs, in Cubex's order.
+ *
+ * Seven of them have nothing behind them yet. They are here because the
+ * layout is being matched first and because an operator should be able to
+ * see what the platform is going to be — but each one says so in its own
+ * words rather than opening empty, which is the difference between a plan
+ * and a lie.
+ */
+type Tab =
+  | 'Overview'
+  | 'Trade'
+  | 'History'
+  | 'Summary'
+  | 'Clients'
+  | 'Audit'
+  | 'Payments'
+  | 'KYC'
+  | 'Requests'
+  | 'Net Trade'
+  | 'Symbols'
+  | 'Groups'
+  | 'Risk'
+  | 'Copy Trading'
+  | 'Signals'
+  | 'Broadcast'
+  | 'Referral'
+
+/** What a tab that has nothing behind it yet says instead of opening empty. */
+const NOT_YET: Partial<Record<Tab, string>> = {
+  Symbols:
+    'Enable and disable instruments, set digits, swap, commission and a per-symbol markup. The catalogue is compiled into the gateway today, so changing it means a deploy.',
+  Groups:
+    'A markup and swap multiplier per group of accounts, overridable per account. Pricing is per instrument today and the same for everybody.',
+  Risk: 'Leverage, margin-call level, maximum lot and swap-free, per account. All four are fixed by the engine today.',
+  'Copy Trading': 'A master account and followers, with a lot ratio.',
+  Signals: 'Trade ideas published to clients, with a record of who took them.',
+  Broadcast: 'A message to every client, or to one manager’s book.',
+  Referral: 'Who introduced whom, and what they are owed for it.',
+}
 
 /**
  * Why money moved, per kind of movement.
@@ -179,8 +221,37 @@ const PANES: readonly (readonly [keyof PanesOpen, string])[] = [
  *  platform's: a manager reading either would be reading other managers'
  *  clients. */
 const TABS: Readonly<Record<'admin' | 'manager', readonly Tab[]>> = {
-  admin: ['Trade', 'History', 'Net Trade', 'Requests', 'Audit'],
-  manager: ['Trade', 'History', 'Net Trade', 'Requests'],
+  admin: [
+    'Overview',
+    'Trade',
+    'History',
+    'Summary',
+    'Clients',
+    'Audit',
+    'Payments',
+    'KYC',
+    'Requests',
+    'Net Trade',
+    'Symbols',
+    'Groups',
+    'Risk',
+    'Copy Trading',
+    'Signals',
+    'Broadcast',
+    'Referral',
+  ],
+  // The books and the audit trail are the platform's: a manager reading
+  // either would be reading other managers' clients. Pricing and the
+  // symbol catalogue are the platform's too.
+  manager: [
+    'Overview',
+    'Trade',
+    'History',
+    'Summary',
+    'Clients',
+    'Requests',
+    'Net Trade',
+  ],
 }
 
 export interface ManagerTerminalProps {
@@ -188,7 +259,9 @@ export interface ManagerTerminalProps {
 }
 
 export function ManagerTerminal({ gw }: ManagerTerminalProps) {
-  const [tab, setTab] = useState<Tab>('Trade')
+  // Overview, as Cubex opens. A desk arriving in the morning wants the
+  // shape of the day before it wants any particular row.
+  const [tab, setTab] = useState<Tab>('Overview')
   /**
    * The open charts, and which one is in front.
    *
@@ -269,6 +342,9 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
    * towards.
    */
   const [side, setSide] = useState<'live' | 'demo'>('live')
+  /** Money this desk has not decided, for the bell in the command bar. */
+  const waitingOnDesk = gw.deposits.filter((d) => d.stage === 'pending').length
+
   const [sheet, setSheet] = useState<
     'books' | 'payments' | 'pricing' | 'second' | null
   >(null)
@@ -359,7 +435,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   // A role that no longer has this tab — a demotion while signed in — is put
   // back on one it does have rather than left on an empty pane.
   useEffect(() => {
-    if (!TABS[isAdmin ? 'admin' : 'manager'].includes(tab)) setTab('Trade')
+    if (!TABS[isAdmin ? 'admin' : 'manager'].includes(tab)) setTab('Overview')
   }, [isAdmin, tab])
 
   // The tab's own data, fetched when it is opened rather than polled always.
@@ -545,6 +621,89 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   const [aiming, setAiming] = useState<readonly Resting[]>([])
 
   /** What a tab has in it, shown beside its name. */
+  /** The people list, as its own tab rather than a right-click away. */
+  const clientColumns: readonly Column<AdminUser>[] = [
+    { key: 'id', header: '#', width: 56, render: (u) => <span className="mono dim">{u.id}</span> },
+    { key: 'login', header: 'Login', render: (u) => u.login },
+    {
+      key: 'manager',
+      header: 'Manager',
+      render: (u) =>
+        u.managerLogin ?? <span className="dim">unassigned</span>,
+    },
+    {
+      key: 'kyc',
+      header: 'Identity',
+      width: 110,
+      render: (u) => <KycPill kyc={u.kyc} />,
+    },
+    {
+      key: 'accounts',
+      header: 'Accounts',
+      align: 'right',
+      width: 80,
+      render: (u) => gw.book.filter((a) => a.owner === u.id).length,
+    },
+    {
+      key: 'equity',
+      header: 'Equity',
+      align: 'right',
+      render: (u) =>
+        showMoney(
+          gw.book
+            .filter((a) => a.owner === u.id)
+            .reduce((total, a) => total + a.equity, 0n) as Money,
+        ),
+    },
+  ]
+
+  /** The same people, arranged around the one decision this tab is for. */
+  const kycColumns: readonly Column<AdminUser>[] = [
+    { key: 'id', header: '#', width: 56, render: (u) => <span className="mono dim">{u.id}</span> },
+    { key: 'login', header: 'Login', render: (u) => u.login },
+    { key: 'kyc', header: 'State', width: 110, render: (u) => <KycPill kyc={u.kyc} /> },
+    {
+      key: 'act',
+      header: '',
+      width: 210,
+      render: (u) => (
+        <div className="row" style={{ gap: 4 }}>
+          <button
+            type="button"
+            className="mgr-go"
+            disabled={!isAdmin || u.kyc === 'approved'}
+            title="Approve this client's identity, letting them open a live account"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Approve ${u.login}? They will be able to open a live account.`,
+                )
+              ) {
+                gw.adminSetKyc(u.id, 'approved')
+                window.setTimeout(() => gw.adminOverview(), 250)
+              }
+            }}
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            className="mgr-mini bad"
+            disabled={!isAdmin || u.kyc === 'rejected'}
+            onClick={() => {
+              if (window.confirm(`Refuse ${u.login}'s identity?`)) {
+                gw.adminSetKyc(u.id, 'rejected')
+                window.setTimeout(() => gw.adminOverview(), 250)
+              }
+            }}
+          >
+            Refuse
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   const tabCount = (t: Tab): string | null => {
     switch (t) {
       case 'Trade':
@@ -555,6 +714,14 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         return String(netTrade.length)
       case 'Requests':
         return String(gw.deposits.filter((d) => d.stage === 'pending').length)
+      case 'Clients':
+        return String(gw.users.filter((u) => u.role === 'client').length)
+      case 'KYC':
+        // The queue, not the population: a count of everybody would be a
+        // number nobody acts on.
+        return String(gw.users.filter((u) => u.kyc === 'submitted').length)
+      case 'Payments':
+        return String(gw.methods.length)
       default:
         return null
     }
@@ -1750,20 +1917,74 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           >
             Reports
           </button>
-        </nav>
-
-        <div className="grow" />
-        <span className="cap">{gw.session?.login}</span>
-
-        <div className="mgr-view">
           <button
             type="button"
-            className="mgr-plain"
+            className="mgr-menu-top"
             aria-expanded={viewOpen}
             onClick={() => setViewOpen((o) => !o)}
           >
             View
           </button>
+        </nav>
+
+        <div className="grow" />
+        <span className="cap">{gw.session?.login}</span>
+
+        {/* Icons rather than words, as Cubex has them: five controls that
+            are reached rarely and recognised instantly, and five words
+            would crowd out the login beside them. Each carries a title,
+            because an icon nobody can name is an icon nobody presses. */}
+        <button
+          type="button"
+          className={`mgr-icon${quiet ? ' off' : ''}`}
+          title={quiet ? 'Alert sounds are off' : 'Alert sounds are on'}
+          aria-label={quiet ? 'Turn alert sounds on' : 'Turn alert sounds off'}
+          onClick={() => {
+            const off = !quiet
+            setMuted(off)
+            setQuiet(off)
+            if (!off) {
+              wake()
+              play('signIn')
+            }
+          }}
+        >
+          {quiet ? '\u25cc' : '\u25c9'}
+        </button>
+
+        <button
+          type="button"
+          className={`mgr-icon${gw.session?.secondFactorWanted ? ' warn' : ''}`}
+          title={
+            gw.session?.secondFactor
+              ? 'Two-factor is on'
+              : 'This login has only a password \u2014 set up two-factor'
+          }
+          aria-label="Two-factor"
+          onClick={() => setSheet('second')}
+        >
+          {gw.session?.secondFactor ? '\u26bf' : '\u26ff'}
+        </button>
+
+        <button
+          type="button"
+          className={`mgr-icon${waitingOnDesk > 0 ? ' live' : ''}`}
+          title={
+            waitingOnDesk > 0
+              ? `${waitingOnDesk} waiting on the desk`
+              : 'Nothing waiting on the desk'
+          }
+          aria-label="Money waiting on the desk"
+          onClick={() => {
+            gw.adminDepositRequests()
+            setTab('Requests')
+          }}
+        >
+          \u2302
+          {waitingOnDesk > 0 ? <span className="mgr-icon-dot">{waitingOnDesk}</span> : null}
+        </button>
+
+        <div className="mgr-view">
           {viewOpen ? (
             <>
               <div className="mgr-view-catch" onPointerDown={() => setViewOpen(false)} />
@@ -1811,8 +2032,14 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           ) : null}
         </div>
 
-        <button type="button" className="mgr-plain" onClick={gw.signOut}>
-          Sign out
+        <button
+          type="button"
+          className="mgr-icon danger"
+          title="Sign out"
+          aria-label="Sign out"
+          onClick={gw.signOut}
+        >
+          \u23fb
         </button>
       </header>
 
@@ -2487,6 +2714,66 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
               />
             ) : null}
 
+            {tab === 'Overview' ? (
+              <DeskOverview
+                book={gw.book}
+                users={gw.users}
+                requests={gw.deposits}
+                positions={gw.positions}
+              />
+            ) : null}
+
+            {tab === 'Summary' ? (
+              <DeskSummary statement={gw.statement} positions={gw.positions} />
+            ) : null}
+
+            {tab === 'Clients' ? (
+              <DataTable
+                columns={clientColumns}
+                rows={gw.users.filter((u) => u.role === 'client')}
+                rowKey={(u) => u.id}
+                empty="No clients yet."
+                rowData={(u) => ({ 'data-user': u.id })}
+              />
+            ) : null}
+
+            {tab === 'KYC' ? (
+              <DataTable
+                columns={kycColumns}
+                // Waiting first: this screen exists to work a queue, and
+                // the people already decided are history.
+                rows={[...gw.users]
+                  .filter((u) => u.role === 'client')
+                  .sort((a, b) =>
+                    a.kyc === 'submitted' && b.kyc !== 'submitted'
+                      ? -1
+                      : b.kyc === 'submitted' && a.kyc !== 'submitted'
+                        ? 1
+                        : a.id - b.id,
+                  )}
+                rowKey={(u) => u.id}
+                empty="No clients yet."
+              />
+            ) : null}
+
+            {tab === 'Payments' ? (
+              <div className="pay-tab">
+                <PaymentMethods gw={gw} />
+              </div>
+            ) : null}
+
+            {NOT_YET[tab] ? (
+              <div className="not-yet">
+                <span className="cap">{tab}</span>
+                <p>{NOT_YET[tab]}</p>
+                <p className="dim">
+                  Not built yet. It is on the list in{' '}
+                  <span className="mono">docs/cubex-parity.md</span>, and this tab is
+                  here so the shape of the platform is visible before all of it is.
+                </p>
+              </div>
+            ) : null}
+
             {tab === 'Audit' ? (
               <div className="table-wrap">
                 <table className="table">
@@ -3035,6 +3322,161 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 })
 
+/** How far one client's identity checks have got, as a pill. */
+function KycPill({ kyc }: { kyc: Kyc }) {
+  const tone =
+    kyc === 'approved' ? 'ok' : kyc === 'submitted' ? 'warn' : kyc === 'rejected' ? 'bad' : null
+  const said =
+    kyc === 'approved'
+      ? 'verified'
+      : kyc === 'submitted'
+        ? 'waiting'
+        : kyc === 'rejected'
+          ? 'refused'
+          : 'none'
+  return tone === null ? (
+    <span className="dim">{said}</span>
+  ) : (
+    <Pill tone={tone === 'ok' ? 'ok' : tone === 'warn' ? 'sell' : 'danger'}>{said}</Pill>
+  )
+}
+
+/**
+ * The platform in one screen: how much is on it, who is on it, and what
+ * is waiting for somebody.
+ *
+ * Cubex opens on this, and it is the right thing to open on — a desk
+ * arriving in the morning wants the shape of the day before it wants any
+ * particular row.
+ */
+function DeskOverview({
+  book,
+  users,
+  requests,
+  positions,
+}: {
+  book: readonly AdminAccount[]
+  users: readonly AdminUser[]
+  requests: readonly DepositRequest[]
+  positions: readonly GatewayPosition[]
+}) {
+  const live = book.filter((a) => a.live)
+  const total = (list: readonly AdminAccount[]) =>
+    list.reduce((sum, a) => sum + a.equity, 0n) as Money
+  const waiting = requests.filter((r) => r.stage === 'pending')
+  const floating = positions.reduce((sum, p) => sum + p.profit, 0n) as Money
+
+  return (
+    <div className="sum">
+      <div className="sum-block">
+        <span className="cap">Money on the platform</span>
+        <SumLine label="Live equity" value={showMoney(total(live))} />
+        <SumLine label="Demo equity" value={showMoney(total(book.filter((a) => !a.live)))} />
+        <SumLine
+          label="Floating on open positions"
+          value={showSigned(floating)}
+          tone={floating < 0n ? 'loss' : 'profit'}
+        />
+      </div>
+
+      <div className="sum-block">
+        <span className="cap">Who is here</span>
+        <SumLine label="Clients" value={String(users.filter((u) => u.role === 'client').length)} />
+        <SumLine label="Managers" value={String(users.filter((u) => u.role === 'manager').length)} />
+        <SumLine label="Live accounts" value={String(live.length)} />
+        <SumLine label="Accounts in all" value={String(book.length)} />
+        <SumLine
+          label="Suspended"
+          value={String(book.filter((a) => !a.tradeable).length)}
+        />
+      </div>
+
+      <div className="sum-block">
+        <span className="cap">Waiting for somebody</span>
+        <SumLine
+          label="Money to decide"
+          value={String(waiting.length)}
+          tone={waiting.length > 0 ? 'loss' : undefined}
+        />
+        <SumLine
+          label="Identities to check"
+          value={String(users.filter((u) => u.kyc === 'submitted').length)}
+        />
+        <SumLine label="Open positions" value={String(positions.length)} />
+      </div>
+    </div>
+  )
+}
+
+/** What the selected account has done, totalled up. */
+function DeskSummary({
+  statement,
+  positions,
+}: {
+  statement: readonly StatementLine[]
+  positions: readonly GatewayPosition[]
+}) {
+  const since = (kinds: readonly StatementLine['kind'][]) =>
+    statement
+      .filter((l) => kinds.includes(l.kind))
+      .reduce((total, l) => total + l.amount, 0n) as Money
+  const closed = since(['trade', 'stopOut', 'stopLoss', 'takeProfit'])
+  const financing = since(['financing'])
+  const floating = positions.reduce((sum, p) => sum + p.profit, 0n) as Money
+
+  return (
+    <div className="sum">
+      <div className="sum-block">
+        <span className="cap">Trading</span>
+        <SumLine
+          label="Closed profit"
+          value={showSigned(closed)}
+          tone={closed < 0n ? 'loss' : 'profit'}
+        />
+        <SumLine
+          label="Floating"
+          value={showSigned(floating)}
+          tone={floating < 0n ? 'loss' : 'profit'}
+        />
+        <SumLine
+          label="Overnight financing"
+          value={showSigned(financing)}
+          tone={financing < 0n ? 'loss' : 'profit'}
+        />
+      </div>
+      <div className="sum-block">
+        <span className="cap">Money</span>
+        <SumLine label="Paid in" value={showMoney(since(['deposit']))} />
+        <SumLine label="Paid out" value={showSigned(since(['withdrawal']))} />
+        <SumLine label="Bonus" value={showSigned(since(['bonus']))} />
+        <SumLine label="Corrections" value={showSigned(since(['adjustment']))} />
+      </div>
+      <p className="sum-note">
+        These add up the statement window, which is the recent past rather than
+        all of it. The balance in the strip above is the engine&rsquo;s own figure
+        and is right whatever this window reaches back to.
+      </p>
+    </div>
+  )
+}
+
+function SumLine({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'profit' | 'loss' | undefined
+}) {
+  return (
+    <div className="sum-row">
+      <span className="dim">{label}</span>
+      <span className={`mono${tone ? ` ${tone}` : ''}`}>{value}</span>
+    </div>
+  )
+}
+
 function Figure({
   label,
   value,
@@ -3049,7 +3491,10 @@ function Figure({
 }) {
   return (
     <div className={strip ? 'mgr-stat' : 'mgr-figure'}>
-      <span className="cap">{label}</span>
+      {/* `Label:` as Cubex writes it. The colon does real work on one
+          line: without it the label and the figure beside it read as two
+          figures, and a strip of eight becomes a strip of sixteen. */}
+      <span className="cap">{label}{strip ? ':' : ''}</span>
       <span className="mono" style={tone ? { color: tone } : undefined}>
         {value}
       </span>

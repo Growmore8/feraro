@@ -1362,3 +1362,85 @@
      than capability. */
   .mgr-menubar { display: none; }
 }
+
+
+/* ── The icon row ──
+
+   Five controls that are reached rarely and recognised instantly. Words
+   for all five would crowd out the login they sit beside, which is the
+   one thing in this corner somebody reads every time. Each carries a
+   title, because an icon nobody can name is an icon nobody presses. */
+
+.mgr-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.mgr-icon:hover { color: var(--ink); background: var(--ground); }
+
+/* Off, rather than absent: a muted platform should look muted. */
+.mgr-icon.off { opacity: 0.5; }
+
+.mgr-icon.warn { color: var(--warn); }
+
+.mgr-icon.danger:hover { color: var(--loss); }
+
+/* Something is actually waiting. The count is the reason to look. */
+.mgr-icon.live { color: var(--accent); }
+
+.mgr-icon-dot {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  min-width: 13px;
+  padding: 0 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  color: var(--accent-ink);
+  background: var(--loss);
+  border-radius: 999px;
+}
+
+
+/* ── A tab with nothing behind it yet ──
+
+   These exist because the layout is being matched before the features
+   are, and an operator should be able to see the shape of the platform.
+   Each says what it will do in its own words rather than opening empty,
+   which is the difference between a plan and a lie. */
+
+.not-yet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 620px;
+  padding: 20px 24px;
+}
+
+.not-yet p { margin: 0; font-size: 12.5px; line-height: 1.6; }
+
+/* The payments tab holds a sheet that was built for a dialog, so it
+   needs the padding the dialog was giving it. */
+.pay-tab { padding: 12px 14px; overflow-y: auto; }
+
+/* The tab strip is sixteen wide now and will not fit a narrow window, so
+   it scrolls rather than wrapping into three rows and pushing the
+   content off the bottom. */
+.blotter-tabs-foot {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.blotter-tabs-foot::-webkit-scrollbar { display: none; }
