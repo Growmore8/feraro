@@ -216,6 +216,32 @@ pub enum ClientMessage {
     AdminRemovePaymentMethod { id: u64 },
     /// Desk: the deposit claims waiting to be checked.
     AdminDepositRequests,
+    /// Every instrument, and what the desk has changed about it.
+    SymbolSettings,
+    /// Administrator: open an instrument for trading, or close it.
+    ///
+    /// Its own message rather than a field on the one below, because the
+    /// reason a desk reaches for it is a feed gone wrong — the price is
+    /// visibly stale and every second it stays open is a trade somebody
+    /// will dispute. That has to be one click, not a form.
+    #[serde(rename_all = "camelCase")]
+    AdminSetSymbolOpen { instrument: u32, open: bool },
+    /// Administrator: set the sizes an instrument accepts.
+    ///
+    /// All three together, because they only make sense together: a
+    /// minimum above the maximum, or a step that does not divide the
+    /// minimum, is a symbol nobody can trade. All three empty puts the
+    /// catalogue's own back.
+    #[serde(rename_all = "camelCase")]
+    AdminSetSymbolSizes {
+        instrument: u32,
+        #[serde(default)]
+        min_qty: String,
+        #[serde(default)]
+        max_qty: String,
+        #[serde(default)]
+        qty_step: String,
+    },
     /// What the house adds to each feed price, per instrument.
     Markups,
     /// Administrator: set one. Zero removes it.
@@ -518,6 +544,32 @@ pub struct AdminAccountDto {
     /// When a demo account stops being able to open positions, in epoch
     /// milliseconds. Absent for a live account.
     pub demo_expires_at: Option<i64>,
+}
+
+/// One instrument as the symbol screen shows it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolDto {
+    pub instrument: u32,
+    pub symbol: String,
+    /// What it is priced in, so the screen can group by it.
+    pub quote: String,
+    pub display_digits: u8,
+    pub tick_size: String,
+    pub contract_size: String,
+    /// The sizes in force, catalogue or override.
+    pub min_qty: String,
+    pub max_qty: String,
+    pub qty_step: String,
+    /// False when it is closed to orders.
+    pub tradeable: bool,
+    /// True when the desk has changed its sizes, so the screen can show
+    /// which rows are the catalogue's and which are somebody's decision.
+    pub overridden: bool,
+    /// Why the catalogue says it is not quite what it looks like.
+    pub note: Option<String>,
+    /// Whether a price has arrived for it recently.
+    pub priced: bool,
 }
 
 /// One power a desk login holds, or does not.
@@ -845,6 +897,13 @@ pub enum ServerMessage {
     /// exists.
     #[serde(rename_all = "camelCase")]
     Unauthorized { detail: &'static str },
+    /// The instrument list, when it has changed.
+    ///
+    /// Sent to everybody rather than to the desk that changed it: the
+    /// size rules are on every deal ticket, and a trader typing against
+    /// the old ones gets a refusal they cannot explain.
+    #[serde(rename_all = "camelCase")]
+    Instruments { instruments: Vec<InstrumentDto> },
     /// Full state, sent once on connect.
     #[serde(rename_all = "camelCase")]
     Snapshot {
@@ -880,6 +939,9 @@ pub enum ServerMessage {
         /// for showing who owns what.
         users: Vec<AdminUserDto>,
     },
+    /// Every instrument, and what the desk has changed about it.
+    #[serde(rename_all = "camelCase")]
+    SymbolSettings { symbols: Vec<SymbolDto> },
     /// A fresh authenticator secret, shown exactly once.
     ///
     /// # Why it is not shown again

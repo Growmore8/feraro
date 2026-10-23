@@ -2037,3 +2037,80 @@
 /* The widest price on the list decides the column, so nothing is ever cut
    off mid-number — which is the one thing a price column must never do. */
 .table.mw td.num { overflow: visible; }
+
+
+/* ── Symbol administration ──
+
+   A closed instrument has to be obvious at a glance down the list, which
+   is why the whole row goes quiet rather than just one cell: somebody
+   scanning for what they shut a minute ago should find it without
+   reading. */
+
+.sym { display: flex; flex-direction: column; min-height: 0; }
+
+.sym-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sym-find {
+  flex: 0 1 220px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+}
+
+.sym-check { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+.sym-wrap { flex: 1 1 auto; overflow: auto; }
+
+.sym-name { display: flex; align-items: center; gap: 7px; }
+
+/* Quiet, not hidden: it is still a row somebody may need to open. */
+.sym-closed td { opacity: 0.55; }
+
+.sym-open { color: var(--profit); font-size: 10.5px; }
+
+.sym-shut { color: var(--loss); font-size: 10.5px; font-weight: 600; }
+
+/* Which rows are a decision and which are just the catalogue. Without it
+   "Reset" is a button nobody knows whether they need. */
+.sym-mark {
+  padding: 0 5px;
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.sym-note {
+  font-size: 10px;
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sym-box {
+  width: 88px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: right;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+.sym-box:focus { outline: none; }

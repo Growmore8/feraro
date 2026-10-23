@@ -71,6 +71,7 @@ import { LevelCell } from '../components/LevelCell'
 import { MarketWatch } from '../components/MarketWatch'
 import { PricingSheet } from '../components/PricingSheet'
 import { SecondFactor } from '../components/SecondFactor'
+import { SymbolAdmin } from '../components/SymbolAdmin'
 import { RequestQueue } from '../components/RequestQueue'
 import { Sheet } from '../components/Sheet'
 import { useChimes } from '../feed/useChimes'
@@ -158,8 +159,6 @@ type Tab =
 
 /** What a tab that has nothing behind it yet says instead of opening empty. */
 const NOT_YET: Partial<Record<Tab, string>> = {
-  Symbols:
-    'Enable and disable instruments, set digits, swap, commission and a per-symbol markup. The catalogue is compiled into the gateway today, so changing it means a deploy.',
   Groups:
     'A markup and swap multiplier per group of accounts, overridable per account. Pricing is per instrument today and the same for everybody.',
   Risk: 'Leverage, margin-call level, maximum lot and swap-free, per account. All four are fixed by the engine today.',
@@ -443,6 +442,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
     if (tab === 'Audit') gw.adminAudit()
     if (tab === 'History') gw.requestStatement()
     if (tab === 'Requests') gw.adminDepositRequests()
+    if (tab === 'Symbols') gw.symbolSettings()
   }, [tab, gw, selected])
 
   const account = useMemo(
@@ -722,6 +722,12 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         return String(gw.users.filter((u) => u.kyc === 'submitted').length)
       case 'Payments':
         return String(gw.methods.length)
+      case 'Symbols': {
+        // The closed ones, not the count: twenty-one is a fact nobody
+        // acts on, and one closed is something somebody should see.
+        const shut = gw.symbols.filter((v) => !v.tradeable).length
+        return shut > 0 ? String(shut) : null
+      }
       default:
         return null
     }
@@ -2753,6 +2759,18 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
                   )}
                 rowKey={(u) => u.id}
                 empty="No clients yet."
+              />
+            ) : null}
+
+            {tab === 'Symbols' ? (
+              <SymbolAdmin
+                symbols={gw.symbols}
+                mayEdit={isAdmin}
+                onOpen={(id, open) => gw.adminSetSymbolOpen(id, open)}
+                onSizes={(id, min, max, step) =>
+                  gw.adminSetSymbolSizes(id, min, max, step)
+                }
+                onChanged={() => gw.symbolSettings()}
               />
             ) : null}
 

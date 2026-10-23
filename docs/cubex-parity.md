@@ -116,7 +116,7 @@ against the other twenty-nine pages.
 |---|---|---|
 | Per-symbol spread markup | yes | yes |
 | Commission per unit | yes | yes |
-| **Symbol administration from the UI** | yes | — catalogue is compiled in |
+| **Symbol administration from the UI** | yes | **yes** — open/close and sizes |
 | Bulk spread edit | yes | — |
 | Per-account symbol overrides | yes | — |
 | Symbol permissions per account | yes | — |
@@ -149,7 +149,7 @@ against the other twenty-nine pages.
 | Payments | — right-click only |
 | KYC | — right-click only |
 | Requests | yes |
-| Symbols | — |
+| Symbols | **yes** |
 | Groups | — |
 | Risk | — |
 | Copy Trading | — |
@@ -206,11 +206,9 @@ against the other twenty-nine pages.
 In the order a broker needs it, not the order it is listed:
 
 1. **Amend a resting order** *(engine)* — the last trading gap.
-2. **Symbol administration** — replaces the compiled catalogue. Unblocks
-   bulk spreads, per-account overrides and symbol permissions.
-3. **Desk tabs: Clients, Payments, KYC** — all three already work through
-   right-click menus; they need screens.
-4. **KYC documents** — upload, review queue, storage.
+2. **Bulk spread edit, per-account symbol overrides, symbol permissions** —
+   the three things symbol administration unblocked.
+3. **KYC documents** — upload, review queue, storage.
 5. **Client profile and avatar** — a name to show instead of an email.
 6. **Per-account risk** *(engine)* — leverage, margin-call level, max lot,
    swap-free.

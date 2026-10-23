@@ -305,6 +305,32 @@ export interface PayoutMethod {
   readonly preferred: boolean
 }
 
+/** One instrument as the symbol screen shows it. */
+export interface SymbolSetting {
+  readonly instrument: number
+  readonly symbol: string
+  /** What it is priced in, so the screen can group by it. */
+  readonly quote: string
+  readonly displayDigits: number
+  readonly tickSize: string
+  readonly contractSize: string
+  /** The sizes in force — the catalogue's, or the desk's. */
+  readonly minQty: string
+  readonly maxQty: string
+  readonly qtyStep: string
+  /** False when it is closed to orders. */
+  readonly tradeable: boolean
+  /**
+   * True when the desk has set the sizes.
+   *
+   * Shown so a row that is somebody's decision can be told from a row
+   * that is just the catalogue — otherwise "put it back" is a button
+   * nobody knows whether they need.
+   */
+  readonly overridden: boolean
+  readonly note: string | null
+}
+
 /** What the house charges on one instrument. */
 export interface Pricing {
   readonly instrument: number
@@ -487,6 +513,8 @@ export interface GatewayState {
   readonly payouts: readonly PayoutMethod[]
   /** What the house charges, per instrument. */
   readonly pricing: readonly Pricing[]
+  /** Every instrument, and what the desk has changed about it. */
+  readonly symbols: readonly SymbolSetting[]
   /** Who signed in, newest first. */
   readonly activity: readonly ActivityLine[]
   /**
@@ -876,6 +904,39 @@ export function handleFrame(
           }))
         : []
       return { patch: { payouts } }
+    }
+
+    case 'symbolSettings': {
+      const symbols = Array.isArray(frame['symbols'])
+        ? (frame['symbols'] as Record<string, unknown>[]).map((v) => ({
+            instrument: Number(v['instrument']),
+            symbol: String(v['symbol'] ?? ''),
+            quote: String(v['quote'] ?? ''),
+            displayDigits: Number(v['displayDigits'] ?? 2),
+            tickSize: String(v['tickSize'] ?? '0'),
+            contractSize: String(v['contractSize'] ?? '1'),
+            minQty: String(v['minQty'] ?? '0'),
+            maxQty: String(v['maxQty'] ?? '0'),
+            qtyStep: String(v['qtyStep'] ?? '0'),
+            // Absent means open: a gateway from before this existed had
+            // no closed instruments, and reading silence as "closed"
+            // would show every symbol shut.
+            tradeable: v['tradeable'] !== false,
+            overridden: v['overridden'] === true,
+            note: typeof v['note'] === 'string' ? v['note'] : null,
+          }))
+        : []
+      return { patch: { symbols } }
+    }
+
+    case 'instruments': {
+      // The list changed under us — a symbol opened or closed, or its
+      // sizes moved. The deal ticket reads these, so it has to be the
+      // new ones or a trader is typing against rules that have gone.
+      const instruments = Array.isArray(frame['instruments'])
+        ? (frame['instruments'] as Record<string, unknown>[]).map(parseInstrument)
+        : []
+      return { patch: { instruments } }
     }
 
     case 'markups': {
@@ -1418,6 +1479,31 @@ export class GatewayClient {
    */
   adminSetPower(user: number, power: string, allowed: boolean): void {
     this.send({ type: 'adminSetPower', user, power, allowed })
+  }
+
+  /** Every instrument, and what the desk has changed about it. */
+  symbolSettings(): void {
+    this.send({ type: 'symbolSettings' })
+  }
+
+  /** Opens an instrument for trading, or closes it. */
+  adminSetSymbolOpen(instrument: number, open: boolean): void {
+    this.send({ type: 'adminSetSymbolOpen', instrument, open })
+  }
+
+  /**
+   * Sets the sizes an instrument accepts.
+   *
+   * All three together, because they only make sense together. All three
+   * empty puts the catalogue's own back.
+   */
+  adminSetSymbolSizes(
+    instrument: number,
+    minQty: string,
+    maxQty: string,
+    qtyStep: string,
+  ): void {
+    this.send({ type: 'adminSetSymbolSizes', instrument, minQty, maxQty, qtyStep })
   }
 
   /** What the house charges, per instrument. */

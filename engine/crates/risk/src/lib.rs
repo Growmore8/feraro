@@ -1183,6 +1183,22 @@ pub fn margin_for(price: Price, qty: Qty, leverage: u32) -> Result<Money, ArithE
 /// An order awaiting admission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProposedOrder {
+    /// True when this order only reduces what is already open.
+    ///
+    /// # Why the admission test needs to know
+    ///
+    /// A closed instrument refuses orders. If that refusal covered closes
+    /// as well, a desk shutting a symbol would trap every client holding
+    /// one — they would watch a position they cannot exit, on a platform
+    /// that decided for them, which is a worse failure than whatever the
+    /// symbol was shut for.
+    ///
+    /// It is specifically *not* a way round the other refusals. A stale
+    /// price still refuses, which is the guard that actually matters: the
+    /// usual reason a symbol is shut is a feed giving out prices nobody
+    /// should deal on, and that is caught by freshness rather than by
+    /// this flag.
+    pub reducing: bool,
     /// Instrument traded.
     pub instrument: InstrumentId,
     /// Direction.
@@ -1256,14 +1272,28 @@ pub fn check_order_shape(
     if terms.instrument.id != order.instrument {
         return Err(RejectReason::UnknownInstrument);
     }
-    if !terms.tradeable {
+    // A closed instrument takes no new risk, but a trader holding a
+    // position opened when it was open must still be able to get out.
+    if !terms.tradeable && !order.reducing {
         return Err(RejectReason::MarketClosed);
     }
 
-    if order.qty <= Qty::ZERO
-        || order.qty < terms.min_qty
-        || order.qty > terms.max_qty
-        || !is_multiple_of(order.qty, terms.qty_step)
+    // The size rules say what may be *opened*. A close is judged against
+    // the position instead — it must not leave a remainder nobody can
+    // trade — and that test has already run by the time this is reached.
+    //
+    // Applying both would trap people: a desk raising the minimum above
+    // somebody's open size would leave them holding a position too small
+    // to close, forever, with no way out but asking the desk by hand.
+    // Nothing positive is still refused, because a close of nothing is a
+    // mistake whichever way it is read.
+    if order.qty <= Qty::ZERO {
+        return Err(RejectReason::InvalidQuantity);
+    }
+    if !order.reducing
+        && (order.qty < terms.min_qty
+            || order.qty > terms.max_qty
+            || !is_multiple_of(order.qty, terms.qty_step))
     {
         return Err(RejectReason::InvalidQuantity);
     }
@@ -2443,6 +2473,7 @@ mod tests {
     fn an_affordable_order_is_admitted() {
         let (account, market) = setup();
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -2462,6 +2493,7 @@ mod tests {
         // 20 BTC at 80,010 is 1.6M notional; at 1:100 that needs 16,002 margin
         // against 10,000 of equity.
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -2499,6 +2531,7 @@ mod tests {
         assert!(account.free_margin(&market, policy).unwrap().is_negative());
 
         let closing = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Sell,
             kind: OrderType::Market,
@@ -2517,6 +2550,7 @@ mod tests {
 
         // While doubling down is still refused.
         let doubling = ProposedOrder {
+            reducing: false,
             side: Side::Buy,
             ..closing
         };
@@ -2531,6 +2565,7 @@ mod tests {
         let (account, market) = setup();
         let policy = MarginPolicy::default();
         let base = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -2540,18 +2575,22 @@ mod tests {
         };
 
         let too_small = ProposedOrder {
+            reducing: false,
             qty: q("0.001"),
             ..base
         };
         let too_big = ProposedOrder {
+            reducing: false,
             qty: q("200"),
             ..base
         };
         let off_step = ProposedOrder {
+            reducing: false,
             qty: q("0.015"),
             ..base
         };
         let zero = ProposedOrder {
+            reducing: false,
             qty: Qty::ZERO,
             ..base
         };
@@ -2571,6 +2610,7 @@ mod tests {
         let policy = MarginPolicy::default();
         // Far beyond what 10,000 of equity can carry at 1:100.
         let huge = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Limit,
@@ -2589,6 +2629,7 @@ mod tests {
 
         // And the shape check still refuses a bad shape.
         let off_step = ProposedOrder {
+            reducing: false,
             qty: q("0.015"),
             ..huge
         };
@@ -2603,6 +2644,7 @@ mod tests {
         let (account, market) = setup();
         let policy = MarginPolicy::default();
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Limit,
@@ -2616,6 +2658,7 @@ mod tests {
         );
 
         let on_grid = ProposedOrder {
+            reducing: false,
             price: p("79000.01"),
             ..order
         };
@@ -2630,6 +2673,7 @@ mod tests {
         let (mut account, market) = setup();
         let policy = MarginPolicy::default();
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -2658,6 +2702,7 @@ mod tests {
         let (account, _) = setup();
         let empty = Market::new();
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -2993,6 +3038,7 @@ mod tests {
 
         // An order the cash alone could not carry is admitted on cash + bonus.
         let order = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -3610,6 +3656,7 @@ mod tests {
         }
 
         let ok = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -4588,6 +4635,7 @@ mod tests {
 
         account.tradeable = false;
         let opening = ProposedOrder {
+            reducing: false,
             instrument: BTC,
             side: Side::Buy,
             kind: OrderType::Market,
@@ -4801,6 +4849,7 @@ mod tests {
         // fixes both. Take the quote away and both go.
         let account = Account::new(TRADER, Currency::USD, 100, m("10000.00"));
         let order = ProposedOrder {
+            reducing: false,
             instrument: USDJPY,
             side: Side::Buy,
             kind: OrderType::Market,

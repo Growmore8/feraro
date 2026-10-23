@@ -21,6 +21,7 @@ mod markups;
 mod payments;
 mod protocol;
 mod snapshot;
+mod symbols;
 mod totp;
 
 use std::collections::BTreeSet;
@@ -31,7 +32,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use domain::{AccountId, UserId};
+use domain::{AccountId, InstrumentId, UserId};
 use futures_util::{SinkExt, StreamExt};
 use money::{Money, Price, Qty};
 use tokio::net::{TcpListener, TcpStream};
@@ -48,7 +49,7 @@ use crate::payments::{Payments, Rail};
 use crate::protocol::{
     instrument_id, kind_from, price_str, side_from, AccountSummaryDto, AdminUserDto, BarDto,
     ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, PayoutMethodDto, PowerDto,
-    ServerMessage,
+    ServerMessage, SymbolDto,
 };
 
 /// The most audit lines the gateway will send in one answer.
@@ -212,9 +213,27 @@ async fn main() -> Result<()> {
         );
     }
 
+    let symbols_path = std::env::var("FERARO_SYMBOLS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| journal_dir.join("symbols.json"));
+    let symbols = Arc::new(Mutex::new(
+        symbols::Symbols::load(&symbols_path)
+            .with_context(|| format!("reading {}", symbols_path.display()))?,
+    ));
+    {
+        let held = symbols.lock().expect("the symbol lock");
+        let closed = held.all().filter(|(_, o)| o.enabled == Some(false)).count();
+        println!(
+            "symbols: {} changed by the desk, {closed} closed, from {}",
+            held.all().count(),
+            symbols_path.display()
+        );
+    }
+
     let gate = Gate {
         users: Arc::new(Mutex::new(users)),
         markups: markups.clone(),
+        symbols: symbols.clone(),
         sessions: Arc::new(Mutex::new(auth::Sessions::new())),
         payments: Arc::new(Mutex::new(payments)),
     };
@@ -230,6 +249,25 @@ async fn main() -> Result<()> {
     );
 
     tokio::spawn(engine.run(commands_rx));
+
+    // Everything the desk has changed, pushed into the engine before the
+    // first client connects. Without this a restart would quietly re-open
+    // every instrument somebody had closed — which is the one thing the
+    // close button must never do, because the reason it was pressed was
+    // usually a feed giving out prices nobody should deal on.
+    {
+        let touched: Vec<InstrumentId> = gate
+            .symbols
+            .lock()
+            .expect("the symbol lock")
+            .all()
+            .map(|(id, _)| id)
+            .collect();
+        for id in touched {
+            apply_symbol(&gate, &commands_tx, id).await;
+        }
+    }
+
     let pulse = Arc::new(Pulse::default());
     spawn_feeds(commands_tx.clone(), pulse.clone(), gate.markups.clone());
 
@@ -617,6 +655,8 @@ struct Gate {
     payments: Arc<Mutex<Payments>>,
     /// What the house adds to each feed price.
     markups: Arc<Mutex<Markups>>,
+    /// What the desk has changed about the instruments themselves.
+    symbols: Arc<Mutex<symbols::Symbols>>,
 }
 
 /// What one connection is allowed to do, once it has signed in.
@@ -1049,6 +1089,9 @@ async fn session(
                             | ClientMessage::AdminSettleDeposit { .. }
                             | ClientMessage::AdminSettle { .. }
                             | ClientMessage::AdminRaise { .. }
+                            | ClientMessage::SymbolSettings
+                            | ClientMessage::AdminSetSymbolOpen { .. }
+                            | ClientMessage::AdminSetSymbolSizes { .. }
                             | ClientMessage::Markups
                             | ClientMessage::AdminSetMarkup { .. }
                             | ClientMessage::AdminSetCommission { .. }
@@ -1621,6 +1664,86 @@ async fn settle(
     })
 }
 
+/// Pushes one instrument's settings into the running engine.
+///
+/// The catalogue is the base and the store holds only what the desk has
+/// said on top of it, so this reads both and sends the result — rather
+/// than sending a diff the engine would have to merge, which would be a
+/// second place the merge could be got wrong.
+async fn apply_symbol(gate: &Gate, commands: &mpsc::Sender<Command>, id: InstrumentId) {
+    let Some(listing) = instruments::catalogue()
+        .into_iter()
+        .find(|l| l.terms.instrument.id == id)
+    else {
+        return;
+    };
+    let base = listing.terms;
+
+    let (tradeable, min_qty, max_qty, qty_step) = {
+        let held = gate.symbols.lock().expect("the symbol lock");
+        let set = held.of(id);
+        let qty = |held: &Option<String>, fallback: money::Qty| {
+            held.as_deref()
+                .and_then(|v| money::Qty::parse(v).ok())
+                .unwrap_or(fallback)
+        };
+        (
+            set.and_then(|o| o.enabled).unwrap_or(base.tradeable),
+            qty(&set.and_then(|o| o.min_qty.clone()), base.min_qty),
+            qty(&set.and_then(|o| o.max_qty.clone()), base.max_qty),
+            qty(&set.and_then(|o| o.qty_step.clone()), base.qty_step),
+        )
+    };
+
+    commands
+        .send(Command::SetTerms {
+            instrument: id,
+            tradeable,
+            min_qty,
+            max_qty,
+            qty_step,
+        })
+        .await
+        .ok();
+}
+
+/// Every instrument, as the symbol screen shows it.
+async fn symbol_dtos(gate: &Gate, commands: &mpsc::Sender<Command>) -> Vec<SymbolDto> {
+    // The engine's own list, so the screen shows what is actually in
+    // force rather than the catalogue plus a file the engine might not
+    // have been told about.
+    let (reply_tx, reply_rx) = oneshot::channel();
+    commands
+        .send(Command::Instruments { reply: reply_tx })
+        .await
+        .ok();
+    let live = reply_rx.await.unwrap_or_default();
+
+    let held = gate.symbols.lock().expect("the symbol lock");
+    live.into_iter()
+        .map(|i| {
+            let set = held.of(InstrumentId(i.id));
+            SymbolDto {
+                instrument: i.id,
+                symbol: i.symbol,
+                quote: i.quote,
+                display_digits: i.display_digits,
+                tick_size: i.tick_size,
+                contract_size: i.contract_size,
+                min_qty: i.min_qty,
+                max_qty: i.max_qty,
+                qty_step: i.qty_step,
+                tradeable: i.tradeable,
+                overridden: set.is_some_and(|o| {
+                    o.min_qty.is_some() || o.max_qty.is_some() || o.qty_step.is_some()
+                }),
+                note: i.note,
+                priced: true,
+            }
+        })
+        .collect()
+}
+
 /// The ways to pay, as this session may see them.
 ///
 /// A client is shown only what is switched on, and only their own claims.
@@ -1876,6 +1999,13 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         // not set it.
         ClientMessage::AdminSetMarkup { .. } | ClientMessage::AdminSetCommission { .. } => {
             Some("only an administrator may change what the house charges")
+        }
+        // The catalogue is the platform's, for the same reason its
+        // pricing is: closing an instrument closes it for every client of
+        // every manager. A manager reads this screen — they are asked why
+        // a symbol is shut — and does not change it.
+        ClientMessage::AdminSetSymbolOpen { .. } | ClientMessage::AdminSetSymbolSizes { .. } => {
+            Some("only an administrator may open and close instruments")
         }
         // Confirming money arrived credits an account, which is the same
         // decision as a deposit and goes the same way.
@@ -2365,6 +2495,72 @@ async fn administer(
                 Err(why) => ServerMessage::AdminResult {
                     done: false,
                     detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::SymbolSettings => Ok(ServerMessage::SymbolSettings {
+            symbols: symbol_dtos(gate, commands).await,
+        }),
+
+        ClientMessage::AdminSetSymbolOpen { instrument, open } => {
+            let id = InstrumentId(instrument);
+            let done = gate
+                .symbols
+                .lock()
+                .expect("the symbol lock")
+                .set_enabled(id, open);
+            if let Err(why) = done {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                });
+            }
+            apply_symbol(gate, commands, id).await;
+            Ok(ServerMessage::AdminResult {
+                done: true,
+                detail: format!(
+                    "Instrument {instrument} is {}. {}",
+                    if open { "open" } else { "closed" },
+                    if open {
+                        "Orders are accepted again."
+                    } else {
+                        "No new orders are accepted. Open positions are untouched and can still be closed."
+                    }
+                ),
+            })
+        }
+
+        ClientMessage::AdminSetSymbolSizes {
+            instrument,
+            min_qty,
+            max_qty,
+            qty_step,
+        } => {
+            let id = InstrumentId(instrument);
+            let cleared = min_qty.trim().is_empty()
+                && max_qty.trim().is_empty()
+                && qty_step.trim().is_empty();
+            let done = gate
+                .symbols
+                .lock()
+                .expect("the symbol lock")
+                .set_sizes(id, &min_qty, &max_qty, &qty_step);
+            if let Err(why) = done {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                });
+            }
+            apply_symbol(gate, commands, id).await;
+            Ok(ServerMessage::AdminResult {
+                done: true,
+                detail: if cleared {
+                    format!("Instrument {instrument} is back to the catalogue's own sizes.")
+                } else {
+                    format!(
+                        "Instrument {instrument} now takes {min_qty} to {max_qty} in steps of {qty_step}. Positions already open are not affected."
+                    )
                 },
             })
         }

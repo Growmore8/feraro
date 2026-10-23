@@ -163,6 +163,30 @@ pub enum Command {
         /// How much to close. Zero means all of it.
         qty: Qty,
     },
+    /// The instrument list as it actually stands.
+    ///
+    /// Asked of the engine rather than rebuilt from the catalogue and the
+    /// settings file, so the screen shows what is in force rather than
+    /// what two files ought to add up to.
+    Instruments {
+        reply: oneshot::Sender<Vec<InstrumentDto>>,
+    },
+    /// The desk has changed an instrument's terms.
+    ///
+    /// Carried as the finished terms rather than as a diff, because the
+    /// store that owns them has already checked them against each other —
+    /// a minimum above a maximum, or a step that does not divide the
+    /// minimum, is a symbol nobody can trade — and sending three
+    /// independent fields would let the engine apply half of a change it
+    /// could not check.
+    SetTerms {
+        instrument: InstrumentId,
+        /// False stops it accepting orders.
+        tradeable: bool,
+        min_qty: Qty,
+        max_qty: Qty,
+        qty_step: Qty,
+    },
     /// A terminal wants to change a resting order without withdrawing it.
     AmendOrder {
         by: UserId,
@@ -1507,6 +1531,7 @@ impl Engine {
                 by,
                 account,
                 ProposedOrder {
+                    reducing: false,
                     instrument,
                     side,
                     kind,
@@ -1532,6 +1557,17 @@ impl Engine {
                 ticket,
                 qty,
             } => self.on_close(by, account, ticket, qty),
+            Command::Instruments { reply } => {
+                let _ = reply.send(self.instrument_dtos());
+                Ok(())
+            }
+            Command::SetTerms {
+                instrument,
+                tradeable,
+                min_qty,
+                max_qty,
+                qty_step,
+            } => self.on_set_terms(instrument, tradeable, min_qty, max_qty, qty_step),
             Command::AmendOrder {
                 by,
                 account,
@@ -1779,6 +1815,7 @@ impl Engine {
                         continue;
                     };
                     let proposed = ProposedOrder {
+                        reducing: false,
                         instrument: order.instrument,
                         side: order.side,
                         kind: OrderType::Market,
@@ -2096,6 +2133,48 @@ impl Engine {
         self.on_flush()
     }
 
+    /// Applies the desk's terms to an instrument, from this moment on.
+    ///
+    /// # What happens to what is already there
+    ///
+    /// Open positions and resting orders are left alone. A position was
+    /// opened under the terms that applied then, and a trader is entitled
+    /// to the rules they opened under — closing it is always allowed,
+    /// whatever the size rules now say, which is why `closable` lets the
+    /// whole parcel go regardless of the step.
+    ///
+    /// A resting order below a new minimum will be refused when it
+    /// triggers, by the same admission test every order goes through.
+    /// That is deliberate: refusing it *now* would withdraw an order the
+    /// trader placed legitimately, while refusing it at the fill tells
+    /// them at the moment it matters and leaves it on the book in case the
+    /// terms go back.
+    fn on_set_terms(
+        &mut self,
+        instrument: InstrumentId,
+        tradeable: bool,
+        min_qty: Qty,
+        max_qty: Qty,
+        qty_step: Qty,
+    ) -> Result<()> {
+        let Some(terms) = self.terms.get_mut(&instrument) else {
+            return Ok(());
+        };
+        terms.tradeable = tradeable;
+        terms.min_qty = min_qty;
+        terms.max_qty = max_qty;
+        terms.qty_step = qty_step;
+
+        // Everybody is told, because the size rules are on the ticket and
+        // a trader typing against the old ones gets a refusal they cannot
+        // explain.
+        let listed = self.instrument_dtos();
+        self.announce_all(ServerMessage::Instruments {
+            instruments: listed,
+        });
+        self.on_flush()
+    }
+
     /// Changes a resting order, keeping its ticket and its place.
     ///
     /// # Why the checks are the ones a new order gets
@@ -2333,6 +2412,8 @@ impl Engine {
         limit_price: Price,
     ) -> Result<()> {
         let ProposedOrder {
+            // Only the admission test cares, and it has run by now.
+            reducing: _,
             instrument,
             side,
             kind,
@@ -2659,6 +2740,10 @@ impl Engine {
             by,
             account,
             ProposedOrder {
+                // The whole point: a closed instrument takes no new risk
+                // but must still let somebody out of a position they
+                // opened when it was open.
+                reducing: true,
                 instrument,
                 side: side.opposite(),
                 kind: OrderType::Market,
@@ -3359,10 +3444,13 @@ impl Engine {
             .collect()
     }
 
-    fn snapshot(&self, id: AccountId) -> Result<ServerMessage> {
-        let (account, positions) = self.portfolio_dto(id)?;
-        let instruments = self
-            .terms
+    /// Every instrument as the terminal lists it.
+    ///
+    /// Shared with the snapshot rather than written twice, so a terms
+    /// change and a fresh connection cannot describe the same instrument
+    /// differently.
+    fn instrument_dtos(&self) -> Vec<InstrumentDto> {
+        self.terms
             .values()
             .map(|t| InstrumentDto {
                 id: t.instrument.id.0,
@@ -3378,7 +3466,12 @@ impl Engine {
                 tradeable: t.tradeable,
                 note: self.notes.get(&t.instrument.id).map(|n| (*n).to_owned()),
             })
-            .collect();
+            .collect()
+    }
+
+    fn snapshot(&self, id: AccountId) -> Result<ServerMessage> {
+        let (account, positions) = self.portfolio_dto(id)?;
+        let instruments = self.instrument_dtos();
 
         let quotes = self
             .terms
@@ -6553,6 +6646,110 @@ mod tests {
         let (again, _rx) = engine(&s.0);
         assert_eq!(again.resting.len(), 0, "a triggered order came back");
         assert_eq!(again.portfolio.account(TRADER).unwrap().lots(BTC).len(), 1);
+    }
+
+    #[test]
+    fn closing_an_instrument_does_not_trap_the_people_holding_it() {
+        // The failure this exists to prevent: a desk shuts a symbol, and
+        // everybody holding one watches a position they cannot exit on a
+        // platform that decided for them. Worse than whatever the symbol
+        // was shut for.
+        let s = Scratch::new("closed-not-trapped");
+        let (mut e, mut rx) = engine(&s.0);
+        place(&mut e, Side::Buy, q("0.010"));
+
+        e.handle(Command::SetTerms {
+            instrument: BTC,
+            tradeable: false,
+            min_qty: q("0.001"),
+            max_qty: q("10"),
+            qty_step: q("0.001"),
+        })
+        .unwrap();
+        let _ = drain(&mut rx);
+
+        // Opening is refused, which is the point of closing it.
+        place_refused(&mut e, &mut rx, q("0.010"));
+
+        // Closing is not.
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+        close(&mut e, ticket, Qty::ZERO).unwrap();
+        assert_eq!(parcel(&e, ticket), None, "they were trapped");
+        books_agree(&e);
+    }
+
+    #[test]
+    fn raising_the_minimum_does_not_strand_a_smaller_position() {
+        // The same trap by another road. A position below a new minimum
+        // is one no ordinary order can close, and the holder would have
+        // to ask the desk to clear it by hand.
+        let s = Scratch::new("min-not-stranded");
+        let (mut e, _rx) = engine(&s.0);
+        place(&mut e, Side::Buy, q("0.010"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        e.handle(Command::SetTerms {
+            instrument: BTC,
+            tradeable: true,
+            min_qty: q("1"),
+            max_qty: q("10"),
+            qty_step: q("1"),
+        })
+        .unwrap();
+
+        close(&mut e, ticket, Qty::ZERO).unwrap();
+        assert_eq!(parcel(&e, ticket), None, "the position was stranded");
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_closed_instrument_still_refuses_a_stale_price() {
+        // `reducing` is not a way round the other refusals. The usual
+        // reason a symbol is shut is a feed giving out prices nobody
+        // should deal on, and that is caught by freshness, not by this.
+        let s = Scratch::new("closed-stale");
+        let (mut e, mut rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("0.010"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+        let _ = drain(&mut rx);
+
+        // Nothing has been quoted for longer than the instrument allows.
+        e.quote_at.remove(&BTC);
+        close(&mut e, ticket, Qty::ZERO).unwrap();
+        e.commit_at(e.last_sync).unwrap();
+        assert!(
+            drain(&mut rx).iter().any(|m| matches!(
+                m,
+                ServerMessage::Rejected {
+                    reason: "marketClosed"
+                }
+            )),
+            "a stale price filled a close"
+        );
+        assert!(parcel(&e, ticket).is_some(), "it closed at a stale price");
+    }
+
+    /// Places an order expecting it to be turned away.
+    fn place_refused(e: &mut Engine, rx: &mut broadcast::Receiver<Broadcast>, qty: Qty) {
+        e.handle(Command::Place {
+            by: TRADER_USER,
+            limit_price: Price::ZERO,
+            account: TRADER,
+            instrument: BTC,
+            side: Side::Buy,
+            kind: OrderType::Market,
+            qty,
+            price: Price::ZERO,
+        })
+        .unwrap();
+        e.commit_at(e.last_sync).unwrap();
+        assert!(
+            drain(rx)
+                .iter()
+                .any(|m| matches!(m, ServerMessage::Rejected { .. })),
+            "a closed instrument accepted an order"
+        );
     }
 
     fn books_agree(e: &Engine) {

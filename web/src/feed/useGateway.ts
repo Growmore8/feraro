@@ -78,6 +78,14 @@ export interface GatewayView extends GatewayState {
   }): void
   forgetPayoutMethod(id: number): void
   adminSetPower(user: number, power: string, allowed: boolean): void
+  symbolSettings(): void
+  adminSetSymbolOpen(instrument: number, open: boolean): void
+  adminSetSymbolSizes(
+    instrument: number,
+    minQty: string,
+    maxQty: string,
+    qtyStep: string,
+  ): void
   markups(): void
   adminSetMarkup(instrument: number, markup: string): void
   adminSetCommission(instrument: number, commission: string): void
@@ -151,6 +159,7 @@ const EMPTY: GatewayState = {
   secondFactorSecret: null,
   payouts: [],
   pricing: [],
+  symbols: [],
   adminResult: null,
 }
 
@@ -382,6 +391,21 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     [],
   )
 
+  const symbolSettings = useCallback(() => {
+    clientRef.current?.symbolSettings()
+  }, [])
+
+  const adminSetSymbolOpen = useCallback((instrument: number, open: boolean) => {
+    clientRef.current?.adminSetSymbolOpen(instrument, open)
+  }, [])
+
+  const adminSetSymbolSizes = useCallback(
+    (instrument: number, minQty: string, maxQty: string, qtyStep: string) => {
+      clientRef.current?.adminSetSymbolSizes(instrument, minQty, maxQty, qtyStep)
+    },
+    [],
+  )
+
   const markups = useCallback(() => {
     clientRef.current?.markups()
   }, [])
@@ -478,6 +502,9 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       savePayoutMethod,
       forgetPayoutMethod,
       adminSetPower,
+      symbolSettings,
+      adminSetSymbolOpen,
+      adminSetSymbolSizes,
       markups,
       adminSetMarkup,
       adminSetCommission,
@@ -526,6 +553,9 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       savePayoutMethod,
       forgetPayoutMethod,
       adminSetPower,
+      symbolSettings,
+      adminSetSymbolOpen,
+      adminSetSymbolSizes,
       markups,
       adminSetMarkup,
       adminSetCommission,

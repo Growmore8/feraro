@@ -796,6 +796,88 @@ describe('a transfer on the statement', () => {
   })
 })
 
+describe('symbol administration', () => {
+  it('reads every instrument and which ones the desk has touched', () => {
+    const frame = JSON.stringify({
+      type: 'symbolSettings',
+      symbols: [
+        {
+          instrument: 1,
+          symbol: 'BTCUSD',
+          quote: 'USD',
+          displayDigits: 2,
+          tickSize: '0.010000000',
+          contractSize: '1.00000000',
+          minQty: '0.00200000',
+          maxQty: '10.00000000',
+          qtyStep: '0.00200000',
+          tradeable: true,
+          overridden: true,
+          note: null,
+        },
+        {
+          instrument: 2,
+          symbol: 'ETHUSD',
+          quote: 'USD',
+          displayDigits: 2,
+          tickSize: '0.010000000',
+          contractSize: '1.00000000',
+          minQty: '0.01000000',
+          maxQty: '200.00000000',
+          qtyStep: '0.01000000',
+          tradeable: false,
+          overridden: false,
+          note: 'feed is stale',
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.symbols!).toHaveLength(2)
+    expect(patch.symbols![0]!.overridden).toBe(true)
+    expect(patch.symbols![1]!.tradeable).toBe(false)
+    expect(patch.symbols![1]!.note).toBe('feed is stale')
+  })
+
+  it('reads a gateway that predates this as everything open', () => {
+    // Silence must not show every instrument shut, which would read as a
+    // platform that had closed itself.
+    const frame = JSON.stringify({
+      type: 'symbolSettings',
+      symbols: [{ instrument: 1, symbol: 'BTCUSD' }],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.symbols![0]!.tradeable).toBe(true)
+    expect(patch.symbols![0]!.overridden).toBe(false)
+  })
+
+  it('takes a fresh instrument list when the terms change', () => {
+    // The deal ticket reads these. If it kept the old ones a trader
+    // types against rules that have gone and cannot explain the refusal.
+    const frame = JSON.stringify({
+      type: 'instruments',
+      instruments: [
+        {
+          id: 1,
+          symbol: 'BTCUSD',
+          base: 'BTC',
+          quote: 'USD',
+          displayDigits: 2,
+          contractSize: '1.00000000',
+          tickSize: '0.010000000',
+          minQty: '0.00200000',
+          maxQty: '10.00000000',
+          qtyStep: '0.00200000',
+          tradeable: false,
+          note: null,
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.instruments![0]!.tradeable).toBe(false)
+    expect(patch.instruments![0]!.qtyStep).toBe(qty('0.002'))
+  })
+})
+
 describe('pricing', () => {
   it('reads the markup, the commission and the spread they produce', () => {
     const frame = JSON.stringify({
