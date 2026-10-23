@@ -16,6 +16,7 @@ import type {
   GatewayEvent,
   GatewayState,
   OrderRequest,
+  Rail,
   Role,
 } from './gateway'
 import type { Price } from '../lib/money'
@@ -45,6 +46,19 @@ export interface GatewayView extends GatewayState {
   adminAssignManager(user: number, manager: number | null): void
   adminSetRole(user: number, role: Role): void
   adminOpenAccount(user: number, live: boolean): void
+  paymentMethods(): void
+  requestDeposit(method: number, amount: string, reference: string): void
+  adminPutPaymentMethod(m: {
+    id: number | null
+    rail: Rail
+    label: string
+    address: string
+    note: string
+    enabled: boolean
+  }): void
+  adminRemovePaymentMethod(id: number): void
+  adminDepositRequests(): void
+  adminSettleDeposit(id: number, credit: boolean, detail: string): void
   requestCandles(instrumentId: number, interval: string, limit: number): void
   requestStatement(limit?: number): void
   adminAction(account: number, kind: AdminActionKind, amount?: string): void
@@ -108,6 +122,9 @@ const EMPTY: GatewayState = {
   activity: [],
   candles: null,
   statement: [],
+  methods: [],
+  myDeposits: [],
+  deposits: [],
   adminResult: null,
 }
 
@@ -233,6 +250,46 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     clientRef.current?.adminOpenAccount(user, live)
   }, [])
 
+  const paymentMethods = useCallback(() => {
+    clientRef.current?.paymentMethods()
+  }, [])
+
+  const requestDeposit = useCallback(
+    (method: number, amount: string, reference: string) => {
+      clientRef.current?.requestDeposit(method, amount, reference)
+    },
+    [],
+  )
+
+  const adminPutPaymentMethod = useCallback(
+    (m: {
+      id: number | null
+      rail: Rail
+      label: string
+      address: string
+      note: string
+      enabled: boolean
+    }) => {
+      clientRef.current?.adminPutPaymentMethod(m)
+    },
+    [],
+  )
+
+  const adminRemovePaymentMethod = useCallback((id: number) => {
+    clientRef.current?.adminRemovePaymentMethod(id)
+  }, [])
+
+  const adminDepositRequests = useCallback(() => {
+    clientRef.current?.adminDepositRequests()
+  }, [])
+
+  const adminSettleDeposit = useCallback(
+    (id: number, credit: boolean, detail: string) => {
+      clientRef.current?.adminSettleDeposit(id, credit, detail)
+    },
+    [],
+  )
+
   const adminSetKyc = useCallback((user: number, kyc: Kyc) => {
     clientRef.current?.adminSetKyc(user, kyc)
   }, [])
@@ -300,6 +357,12 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminAssignManager,
       adminSetRole,
       adminOpenAccount,
+      paymentMethods,
+      requestDeposit,
+      adminPutPaymentMethod,
+      adminRemovePaymentMethod,
+      adminDepositRequests,
+      adminSettleDeposit,
       requestCandles,
       requestStatement,
       adminAction,
@@ -328,6 +391,12 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminAssignManager,
       adminSetRole,
       adminOpenAccount,
+      paymentMethods,
+      requestDeposit,
+      adminPutPaymentMethod,
+      adminRemovePaymentMethod,
+      adminDepositRequests,
+      adminSettleDeposit,
       requestCandles,
       requestStatement,
       adminAction,

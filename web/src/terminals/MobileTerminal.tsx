@@ -33,6 +33,8 @@ import type { Trail } from '../feed/useTape'
 import type { GatewayPosition, StatementLine } from '../feed/gateway'
 import type { Interval } from '../feed/types'
 import type { GatewayView } from '../feed/useGateway'
+import { useChimes } from '../feed/useChimes'
+import { wake } from '../lib/chime'
 import type { Instrument, Side } from '../lib/domain'
 import { DEFAULT_INSTRUMENT, INSTRUMENTS } from '../lib/instruments'
 import type { Money, Qty } from '../lib/money'
@@ -82,6 +84,9 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
   const instrument = instruments.find((i) => i.id === symbol) ?? DEFAULT_INSTRUMENT
   const quote = gw.quotes.get(instrument.id)
   const tape = useTape(gw.quotes)
+
+  // Fills, stop-outs, margin calls and protections, on this account.
+  useChimes(gw.events, gw.positions)
   const account = gw.account
 
   useEffect(() => {
@@ -171,7 +176,7 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
   }
 
   return (
-    <div className="mob">
+    <div className="mob" onPointerDownCapture={wake}>
       {/* ── Top ── */}
       <header className="mob-top">
         <button

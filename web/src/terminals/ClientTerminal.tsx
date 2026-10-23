@@ -32,6 +32,8 @@ import type {
 import type { FeedQuote, FeedState, Interval } from '../feed/types'
 import { useFeed } from '../feed/useFeed'
 import type { GatewayView } from '../feed/useGateway'
+import { useChimes } from '../feed/useChimes'
+import { wake } from '../lib/chime'
 import type { Instrument, Notice, OrderType, RejectReason } from '../lib/domain'
 import { ORDER_TYPE_LABEL, rejectionCopy } from '../lib/domain'
 import { DEFAULT_INSTRUMENT, INSTRUMENTS } from '../lib/instruments'
@@ -106,6 +108,9 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
 
   const session = gw.session
   const positions = gw.positions
+
+  // Fills, stop-outs, margin calls and protections.
+  useChimes(gw.events, positions)
   // Swap counts toward floating, as it does toward the engine's equity figure.
   const floating = useMemo(
     () => sum(positions.map((p) => (p.profit + p.swap) as Money)),
@@ -347,7 +352,7 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
   ]
 
   return (
-    <div className="terminal">
+    <div className="terminal" onPointerDownCapture={wake}>
       {/* ── Command bar ── */}
       <div className="cmdbar">
         <div className="brand">

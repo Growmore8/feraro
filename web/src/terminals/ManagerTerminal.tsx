@@ -58,19 +58,22 @@
  * what an equity or a margin level is. The browser formats, and nothing else.
  */
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Ask } from '../components/Ask'
 import type { AskField } from '../components/Ask'
 import { ChartPane, TF_LABEL } from '../components/ChartPane'
 import { ContextMenu } from '../components/ContextMenu'
 import type { MenuItem, MenuLine, MenuSubject } from '../components/ContextMenu'
+import type { Rail } from '../feed/gateway'
 import { DealTicket } from '../components/DealTicket'
 import type { Resting } from '../components/DealTicket'
 import { LevelCell } from '../components/LevelCell'
 import { MarketWatch } from '../components/MarketWatch'
 import { Sheet } from '../components/Sheet'
+import { useChimes } from '../feed/useChimes'
+import { isMuted, play, setMuted, wake } from '../lib/chime'
 import { Splitter } from '../components/Splitter'
-import { DataTable } from '../components/primitives'
+import { DataTable, Pill } from '../components/primitives'
 import type { Column } from '../components/primitives'
 import type {
   AdminAccount,
@@ -102,7 +105,14 @@ import './ManagerTerminal.css'
 /** How often the book refreshes itself while the screen is open. */
 const REFRESH_MS = 4_000
 
-type Tab = 'Trade' | 'History' | 'Net Trade' | 'Audit'
+type Tab = 'Trade' | 'History' | 'Net Trade' | 'Deposits' | 'Audit'
+
+/** What each payment rail is called on screen. */
+const RAIL_WORD: Record<string, string> = {
+  crypto: 'Crypto',
+  upi: 'UPI',
+  bank: 'Bank',
+}
 
 /** The folder for accounts whose client no manager holds. */
 const UNASSIGNED = '\u0000unassigned'
@@ -119,8 +129,8 @@ const PANES: readonly (readonly [keyof PanesOpen, string])[] = [
  *  platform's: a manager reading either would be reading other managers'
  *  clients. */
 const TABS: Readonly<Record<'admin' | 'manager', readonly Tab[]>> = {
-  admin: ['Trade', 'History', 'Net Trade', 'Audit'],
-  manager: ['Trade', 'History', 'Net Trade'],
+  admin: ['Trade', 'History', 'Net Trade', 'Deposits', 'Audit'],
+  manager: ['Trade', 'History', 'Net Trade', 'Deposits'],
 }
 
 export interface ManagerTerminalProps {
@@ -170,9 +180,34 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   } | null>(null)
 
   const [viewOpen, setViewOpen] = useState(false)
+  const [quiet, setQuiet] = useState(isMuted)
+
+  // Fills, stop-outs, margin calls and protections.
+  useChimes(gw.events, gw.positions)
+
+  /**
+   * Clients arriving and leaving.
+   *
+   * There is no push for this — a sign-in is journaled and shown in the
+   * activity feed, which the desk polls. So the feed is polled on the
+   * ordinary refresh and sounded when its newest entry changes, which is
+   * as close to live as the record gets without a new wire message.
+   */
+  const heardActivity = useRef<number | null>(null)
+  useEffect(() => {
+    const newest = gw.activity[0]
+    if (!newest) return
+    const was = heardActivity.current
+    heardActivity.current = newest.seq
+    // The first poll after opening the screen is history, not news.
+    if (was === null || newest.seq <= was) return
+    if (newest.what === 'signedIn' || newest.what === 'resumed') play('signIn')
+    if (newest.what === 'signedOut') play('signOut')
+    if (newest.what === 'refused') play('refused')
+  }, [gw.activity])
 
   /** A read-only panel, when one has been opened from a menu. */
-  const [sheet, setSheet] = useState<'books' | null>(null)
+  const [sheet, setSheet] = useState<'books' | 'payments' | null>(null)
 
   /**
    * Tickets ticked in the blotter.
@@ -249,9 +284,13 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
       gw.adminOverview()
       if (tab === 'Audit') gw.adminAudit()
       if (tab === 'History') gw.requestStatement()
+      if (tab === 'Deposits') gw.adminDepositRequests()
+      // Not for a tab — for the sound. The desk wants to hear a client
+      // arrive whichever screen it is looking at.
+      if (!quiet) gw.adminActivity()
     }, REFRESH_MS)
     return () => window.clearInterval(timer)
-  }, [gw, tab])
+  }, [gw, tab, quiet])
 
   // A role that no longer has this tab — a demotion while signed in — is put
   // back on one it does have rather than left on an empty pane.
@@ -263,6 +302,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   useEffect(() => {
     if (tab === 'Audit') gw.adminAudit()
     if (tab === 'History') gw.requestStatement()
+    if (tab === 'Deposits') gw.adminDepositRequests()
   }, [tab, gw, selected])
 
   const account = useMemo(
@@ -446,6 +486,8 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         return String(gw.statement.length)
       case 'Net Trade':
         return String(netTrade.length)
+      case 'Deposits':
+        return String(gw.deposits.filter((d) => d.stage === 'pending').length)
       default:
         return null
     }
@@ -1042,6 +1084,13 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         { label: 'New manager\u2026', onPick: () => setAsk(newPersonDialog('manager')) },
         '-',
         {
+          label: 'Payment methods\u2026',
+          onPick: () => {
+            gw.paymentMethods()
+            setSheet('payments')
+          },
+        },
+        {
           label: 'Trial balance\u2026',
           onPick: () => {
             gw.adminBooks()
@@ -1264,6 +1313,23 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
                   </label>
                 ))}
                 <div className="ctx-rule" />
+                <label className="mgr-view-row">
+                  <input
+                    type="checkbox"
+                    checked={!quiet}
+                    onChange={() => {
+                      const off = !quiet
+                      setMuted(off)
+                      setQuiet(off)
+                      if (!off) {
+                        wake()
+                        play('signIn')
+                      }
+                    }}
+                  />
+                  <span>Sound</span>
+                </label>
+                <div className="ctx-rule" />
                 <button
                   type="button"
                   className="mgr-view-reset"
@@ -1292,6 +1358,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
 
       <div
         className="mgr-body"
+        onPointerDownCapture={wake}
         onContextMenu={(e) => {
           // Only the background: a row's own handler has already stopped
           // this, so reaching here means nothing was under the pointer.
@@ -1913,6 +1980,112 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
               </div>
             ) : null}
 
+            {tab === 'Deposits' ? (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 54 }}>#</th>
+                      <th style={{ width: 150 }}>When</th>
+                      <th style={{ width: 70 }}>Account</th>
+                      <th>Client</th>
+                      <th style={{ width: 140 }}>Paid to</th>
+                      <th className="num" style={{ width: 120 }}>
+                        They say
+                      </th>
+                      <th style={{ width: 180 }}>Reference</th>
+                      <th style={{ width: 96 }}>State</th>
+                      <th style={{ width: 170 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gw.deposits.map((d) => (
+                      <tr key={d.id}>
+                        <td className="mono dim">{d.id}</td>
+                        <td className="mono dim">{when(d.at)}</td>
+                        <td className="mono">{d.account}</td>
+                        <td>{d.login ?? <span className="dim">unknown</span>}</td>
+                        <td>
+                          <span className="dim">{RAIL_WORD[d.rail]}</span> {d.methodLabel}
+                        </td>
+                        {/* A claim, not an agreed figure, so it is never
+                            formatted as though the platform had checked it. */}
+                        <td className="num mono">{d.amount}</td>
+                        <td className="mono dim">{d.reference || '\u2014'}</td>
+                        <td>
+                          {d.stage === 'pending' ? (
+                            <Pill tone="sell">waiting</Pill>
+                          ) : d.stage === 'credited' ? (
+                            <Pill tone="ok">credited</Pill>
+                          ) : (
+                            <span className="dim">refused</span>
+                          )}
+                        </td>
+                        <td>
+                          {d.stage !== 'pending' ? (
+                            <span className="dim">{d.detail}</span>
+                          ) : (
+                            <div className="row" style={{ gap: 4 }}>
+                              <button
+                                type="button"
+                                className="mgr-go"
+                                disabled={!isAdmin}
+                                title={
+                                  isAdmin
+                                    ? 'Credit the account with what they say they sent'
+                                    : 'Confirming money arrived is an administrator\u2019s'
+                                }
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      `Have you SEEN ${d.amount} arrive from ${d.login ?? 'this client'}? This credits account ${d.account}.`,
+                                    )
+                                  )
+                                    return
+                                  gw.adminSettleDeposit(d.id, true, 'seen by the desk')
+                                  window.setTimeout(() => {
+                                    gw.adminDepositRequests()
+                                    gw.adminOverview()
+                                  }, 250)
+                                }}
+                              >
+                                Money arrived
+                              </button>
+                              <button
+                                type="button"
+                                className="mgr-mini bad"
+                                onClick={() => {
+                                  const why = window.prompt(
+                                    'Why is this refused? The client is told.',
+                                    'nothing received',
+                                  )
+                                  if (why === null) return
+                                  gw.adminSettleDeposit(d.id, false, why)
+                                  window.setTimeout(() => gw.adminDepositRequests(), 250)
+                                }}
+                              >
+                                Not seen
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {gw.deposits.length === 0 ? (
+                  <p className="table-empty dim">No deposit claims.</p>
+                ) : (
+                  <p className="mgr-note">
+                    Nothing here has moved any money. A claim is a client saying they
+                    paid; <strong>check your bank or wallet first</strong>, and only then
+                    confirm — the credit is an ordinary journaled deposit with your name
+                    on it.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             {tab === 'Audit' ? (
               <div className="table-wrap">
                 <table className="table">
@@ -1974,6 +2147,16 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           items={menu.items}
           onClose={() => setMenu(null)}
         />
+      ) : null}
+
+      {sheet === 'payments' ? (
+        <Sheet
+          title="Payment methods"
+          note="What clients are shown when they want to pay money in. Nothing here moves money: a client sees these details, pays, and says so — and the desk credits the account once it has seen the money arrive."
+          onClose={() => setSheet(null)}
+        >
+          <PaymentMethods gw={gw} />
+        </Sheet>
       ) : null}
 
       {sheet === 'books' ? (
@@ -2038,6 +2221,186 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         />
       ) : null}
     </div>
+  )
+}
+
+/**
+ * Where clients send money, as the desk sets it up.
+ *
+ * Switching a method off is how one is retired — not deleting it. A client
+ * may already be paying to that wallet, and the desk has to be able to
+ * recognise the address when the money lands.
+ */
+function PaymentMethods({ gw }: { gw: GatewayView }) {
+  const [rail, setRail] = useState<Rail>('crypto')
+  const [label, setLabel] = useState('')
+  const [address, setAddress] = useState('')
+  const [note, setNote] = useState('')
+  const [editing, setEditing] = useState<number | null>(null)
+
+  const clear = () => {
+    setEditing(null)
+    setLabel('')
+    setAddress('')
+    setNote('')
+  }
+
+  const save = (enabled: boolean) => {
+    if (label.trim() === '' || address.trim() === '') return
+    gw.adminPutPaymentMethod({
+      id: editing,
+      rail,
+      label: label.trim(),
+      address: address.trim(),
+      note: note.trim(),
+      enabled,
+    })
+    clear()
+    window.setTimeout(() => gw.paymentMethods(), 250)
+  }
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ width: 62 }}>Rail</th>
+              <th style={{ width: 130 }}>Name</th>
+              <th>Pay to</th>
+              <th style={{ width: 70 }}>Shown</th>
+              <th style={{ width: 120 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {gw.methods.map((m) => (
+              <tr key={m.id}>
+                <td className="dim">{RAIL_WORD[m.rail]}</td>
+                <td>{m.label}</td>
+                <td className="mono" style={{ overflowWrap: 'anywhere' }}>
+                  {m.address}
+                  {m.note ? <div className="dim">{m.note}</div> : null}
+                </td>
+                <td>
+                  {m.enabled ? <Pill tone="ok">yes</Pill> : <span className="dim">no</span>}
+                </td>
+                <td>
+                  <div className="row" style={{ gap: 4 }}>
+                    <button
+                      type="button"
+                      className="mgr-mini"
+                      onClick={() => {
+                        setEditing(m.id)
+                        setRail(m.rail)
+                        setLabel(m.label)
+                        setAddress(m.address)
+                        setNote(m.note)
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="mgr-mini"
+                      onClick={() => {
+                        gw.adminPutPaymentMethod({
+                          id: m.id,
+                          rail: m.rail,
+                          label: m.label,
+                          address: m.address,
+                          note: m.note,
+                          enabled: !m.enabled,
+                        })
+                        window.setTimeout(() => gw.paymentMethods(), 250)
+                      }}
+                    >
+                      {m.enabled ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {gw.methods.length === 0 ? (
+          <p className="table-empty dim">
+            No way to pay in yet. Clients see nothing until you add one.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mgr-add" style={{ paddingTop: 10 }}>
+        <span className="cap">
+          {editing === null ? 'Add a way to pay' : `Editing method ${editing}`}
+        </span>
+        <select
+          className="mgr-input"
+          value={rail}
+          aria-label="Rail"
+          onChange={(e) => setRail(e.target.value as Rail)}
+        >
+          <option value="crypto">Crypto</option>
+          <option value="upi">UPI</option>
+          <option value="bank">Bank transfer</option>
+        </select>
+        <input
+          className="mgr-input"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder={rail === 'crypto' ? 'USDT (TRC-20)' : rail === 'upi' ? 'UPI' : 'HDFC Bank'}
+          aria-label="Name"
+        />
+        <input
+          className="mgr-input mono"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder={
+            rail === 'crypto'
+              ? 'wallet address'
+              : rail === 'upi'
+                ? 'name@bank'
+                : 'account number, IFSC, holder'
+          }
+          spellCheck={false}
+          aria-label="Pay to"
+        />
+        <input
+          className="mgr-input"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="anything they must do to be credited (optional)"
+          aria-label="Note"
+        />
+        <div className="row" style={{ gap: 4 }}>
+          <button
+            type="button"
+            className="mgr-go"
+            disabled={label.trim() === '' || address.trim() === ''}
+            onClick={() => save(true)}
+          >
+            {editing === null ? 'Add and show it' : 'Save and show it'}
+          </button>
+          <button
+            type="button"
+            className="mgr-mini"
+            disabled={label.trim() === '' || address.trim() === ''}
+            onClick={() => save(false)}
+          >
+            Save hidden
+          </button>
+          {editing === null ? null : (
+            <button type="button" className="mgr-mini" onClick={clear}>
+              Cancel
+            </button>
+          )}
+        </div>
+        <p className="mgr-note">
+          Check the address character by character before you show it. A wrong
+          wallet sends a client&rsquo;s money somewhere nobody can reach, and
+          nothing here can undo that.
+        </p>
+      </div>
+    </>
   )
 }
 

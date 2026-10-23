@@ -19,6 +19,11 @@
 # publish every account in it.
 *.snapshot.json
 
+# Where clients are told to send money, and the claims that they have.
+# Per-deployment, and a wallet address committed by mistake is one a reader
+# might pay to long after it was rotated.
+payments.json
+
 # The user store holds password hashes. Hashes are not secrets you can use,
 # but they are secrets you can attack offline, and a committed one is
 # permanent. Every deployment makes its own.

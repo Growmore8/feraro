@@ -118,6 +118,48 @@ pub enum ClientMessage {
     /// Administrator: promote a login to manager, or back to client.
     #[serde(rename_all = "camelCase")]
     AdminSetRole { user: u64, role: String },
+    /// How a client may pay money in. Clients see the ones switched on;
+    /// the desk sees all of them.
+    PaymentMethods,
+    /// Client: "I have sent you this much, by this method."
+    ///
+    /// A claim, not a payment. Nothing is credited until somebody at the
+    /// desk sees the money and deposits it.
+    #[serde(rename_all = "camelCase")]
+    DepositRequested {
+        method: u64,
+        amount: String,
+        #[serde(default)]
+        reference: String,
+    },
+    /// Administrator: add a way to pay, or change one. A null id adds.
+    #[serde(rename_all = "camelCase")]
+    AdminPutPaymentMethod {
+        #[serde(default)]
+        id: Option<u64>,
+        rail: String,
+        label: String,
+        address: String,
+        #[serde(default)]
+        note: String,
+        enabled: bool,
+    },
+    /// Administrator: remove one nobody has paid to.
+    #[serde(rename_all = "camelCase")]
+    AdminRemovePaymentMethod { id: u64 },
+    /// Desk: the deposit claims waiting to be checked.
+    AdminDepositRequests,
+    /// Desk: "I have looked, and the money is there" — or it is not.
+    ///
+    /// Crediting is a separate, journaled deposit. This only closes the
+    /// claim, so the two can never disagree about who authorised what.
+    #[serde(rename_all = "camelCase")]
+    AdminSettleDeposit {
+        id: u64,
+        credit: bool,
+        #[serde(default)]
+        detail: String,
+    },
     /// Desk: open another account for a client who already has one.
     ///
     /// The same thing the client could do themselves, done for them —
@@ -361,6 +403,43 @@ pub struct AdminUserDto {
     pub manager_login: Option<String>,
 }
 
+/// A way to pay money in, as the desk has set it up.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentMethodDto {
+    pub id: u64,
+    /// `crypto`, `upi` or `bank`.
+    pub rail: &'static str,
+    pub label: String,
+    pub address: String,
+    pub note: String,
+    pub enabled: bool,
+}
+
+/// A client's claim that they have paid.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepositRequestDto {
+    pub id: u64,
+    pub account: u64,
+    pub user: u64,
+    /// Their login, joined by the session.
+    pub login: Option<String>,
+    pub method: u64,
+    /// What that method is called, joined so the screen need not look.
+    pub method_label: String,
+    pub rail: &'static str,
+    /// What the client says they sent. A claim, not an agreed figure.
+    pub amount: String,
+    pub reference: String,
+    /// Epoch milliseconds.
+    pub at: i64,
+    /// `pending`, `credited` or `refused`.
+    pub stage: &'static str,
+    pub settled_by: Option<u64>,
+    pub detail: String,
+}
+
 /// One line of an account statement: money in, money out, and what it left.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -600,6 +679,17 @@ pub enum ServerMessage {
         /// for showing who owns what.
         users: Vec<AdminUserDto>,
     },
+    /// The ways money may be paid in.
+    #[serde(rename_all = "camelCase")]
+    PaymentMethods {
+        methods: Vec<PaymentMethodDto>,
+        /// This client's own claims, newest first. Empty for the desk,
+        /// which asks for the queue instead.
+        mine: Vec<DepositRequestDto>,
+    },
+    /// Desk: the deposit claims, newest first.
+    #[serde(rename_all = "camelCase")]
+    DepositRequests { requests: Vec<DepositRequestDto> },
     /// Administrator: the audit trail, newest first.
     #[serde(rename_all = "camelCase")]
     AdminAudit { entries: Vec<AuditDto> },

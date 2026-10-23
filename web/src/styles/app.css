@@ -774,3 +774,139 @@
   padding-bottom: 8px;
   border-bottom: 1px solid var(--rule);
 }
+
+
+/* Paying money in.
+   The address is what somebody is about to copy into a banking app, so it
+   is the largest thing here and it selects in one click. */
+
+.dep { display: flex; flex-direction: column; gap: 12px; }
+
+.dep-none { margin: 0; padding: 18px 4px; color: var(--ink-3); }
+
+.dep-rails { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.dep-rails button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.dep-rails button.on {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.dep-rail {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.dep-label { font-size: 12.5px; font-weight: 600; }
+
+.dep-to {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.dep-address {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.dep-copy {
+  flex: none;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.dep-note {
+  margin: 0;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--warn);
+  background: var(--accent-wash);
+  border-radius: 7px;
+}
+
+.dep-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+.dep-form label { flex: 1 1 150px; display: flex; flex-direction: column; gap: 3px; }
+
+.dep-form input {
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.dep-go {
+  flex: none;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dep-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.dep-says { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+
+.dep-mine {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--rule);
+}
+
+.dep-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  background: var(--ground);
+  border-radius: 5px;
+}
+
+.dep-stage { margin-left: auto; text-align: right; }
+
+.dep-pending .dep-stage { color: var(--warn); }
+.dep-credited .dep-stage { color: var(--profit); }
+.dep-refused .dep-stage { color: var(--loss); }

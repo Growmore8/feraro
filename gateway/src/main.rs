@@ -17,6 +17,7 @@ mod candles;
 mod engine;
 mod feeds;
 mod instruments;
+mod payments;
 mod protocol;
 mod snapshot;
 
@@ -39,9 +40,10 @@ use crate::engine::{
     amend_reason_from, AdminAction, AdminOutcome, Amendment, Broadcast, Command, Engine,
     EngineConfig, FLUSH_INTERVAL,
 };
+use crate::payments::{Payments, Rail};
 use crate::protocol::{
     instrument_id, kind_from, price_str, side_from, AccountSummaryDto, AdminUserDto, BarDto,
-    ClientMessage, ServerMessage,
+    ClientMessage, DepositRequestDto, PaymentMethodDto, ServerMessage,
 };
 
 /// The most audit lines the gateway will send in one answer.
@@ -171,9 +173,21 @@ async fn main() -> Result<()> {
             users_path.display()
         );
     }
+    let payments_path = std::env::var("FERARO_PAYMENTS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| journal_dir.join("payments.json"));
+    let payments = Payments::load(&payments_path)
+        .with_context(|| format!("reading {}", payments_path.display()))?;
+    println!(
+        "payments: {} method(s) from {}",
+        payments.methods().len(),
+        payments_path.display()
+    );
+
     let gate = Gate {
         users: Arc::new(Mutex::new(users)),
         sessions: Arc::new(Mutex::new(auth::Sessions::new())),
+        payments: Arc::new(Mutex::new(payments)),
     };
 
     let (events_tx, _) = broadcast::channel::<Broadcast>(BROADCAST_QUEUE);
@@ -547,6 +561,8 @@ async fn send(sink: &mut Sink, message: &ServerMessage) -> Result<()> {
 struct Gate {
     users: Arc<Mutex<auth::Users>>,
     sessions: Arc<Mutex<auth::Sessions>>,
+    /// How money may be paid in, and the claims waiting to be checked.
+    payments: Arc<Mutex<Payments>>,
 }
 
 /// What one connection is allowed to do, once it has signed in.
@@ -697,6 +713,38 @@ async fn session(
                             continue;
                         };
                         match other {
+                            ClientMessage::PaymentMethods => {
+                                let reply = payment_methods(&gate, session);
+                                send(&mut sink, &reply).await?;
+                            }
+                            ClientMessage::DepositRequested { method, amount, reference } => {
+                                let raised = {
+                                    let mut pay = gate.payments.lock().expect("the payment lock");
+                                    pay.raise(
+                                        session.selected,
+                                        session.user,
+                                        method,
+                                        &amount,
+                                        &reference,
+                                        now_ms(),
+                                    )
+                                };
+                                let reply = match raised {
+                                    Ok(id) => ServerMessage::AdminResult {
+                                        done: true,
+                                        detail: format!(
+                                            "Deposit {id} recorded. The desk will credit account {} once the money is seen.",
+                                            session.selected.0
+                                        ),
+                                    },
+                                    Err(why) => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: format!("Refused: {why}"),
+                                    },
+                                };
+                                send(&mut sink, &reply).await?;
+                                send(&mut sink, &payment_methods(&gate, session)).await?;
+                            }
                             ClientMessage::OpenAccount { live } => {
                                 // A live account needs identity checks the
                                 // session holds; the engine knows nothing
@@ -855,6 +903,10 @@ async fn session(
                             | ClientMessage::AdminAssignManager { .. }
                             | ClientMessage::AdminSetRole { .. }
                             | ClientMessage::AdminOpenAccount { .. }
+                            | ClientMessage::AdminPutPaymentMethod { .. }
+                            | ClientMessage::AdminRemovePaymentMethod { .. }
+                            | ClientMessage::AdminDepositRequests
+                            | ClientMessage::AdminSettleDeposit { .. }
                             | ClientMessage::AdminSetPassword { .. }) => {
                                 if let Some(detail) = desk_refusal(session, &admin_message) {
                                     send(&mut sink, &ServerMessage::Unauthorized { detail }).await?;
@@ -1023,6 +1075,63 @@ async fn resume(
     .await
 }
 
+/// The ways to pay, as this session may see them.
+///
+/// A client is shown only what is switched on, and only their own claims.
+/// The desk sees everything, including the methods it has turned off.
+fn payment_methods(gate: &Gate, session: &Signed) -> ServerMessage {
+    let users = gate.users.lock().expect("the user store lock");
+    let pay = gate.payments.lock().expect("the payment lock");
+    let desk = !matches!(session.role, Role::Client);
+
+    let methods = if desk {
+        pay.methods().iter().map(describe_method).collect()
+    } else {
+        pay.offered().map(describe_method).collect()
+    };
+    let mine = pay
+        .mine(session.user)
+        .into_iter()
+        .map(|r| describe_request(r, &pay, &users))
+        .collect();
+
+    ServerMessage::PaymentMethods { methods, mine }
+}
+
+fn describe_method(m: &payments::Method) -> PaymentMethodDto {
+    PaymentMethodDto {
+        id: m.id,
+        rail: m.rail.as_str(),
+        label: m.label.clone(),
+        address: m.address.clone(),
+        note: m.note.clone(),
+        enabled: m.enabled,
+    }
+}
+
+fn describe_request(
+    r: &payments::Request,
+    pay: &Payments,
+    users: &auth::Users,
+) -> DepositRequestDto {
+    let method = pay.method(r.method);
+    DepositRequestDto {
+        id: r.id,
+        account: r.account,
+        user: r.user,
+        login: users.by_id(UserId(r.user)).map(|u| u.login.clone()),
+        method: r.method,
+        method_label: method.map(|m| m.label.clone()).unwrap_or_default(),
+        rail: method.map(|m| m.rail.as_str()).unwrap_or("bank"),
+        amount: r.amount.clone(),
+        reference: r.reference.clone(),
+        at: r.at,
+        stage: r.stage.as_str(),
+        settled_by: r.settled_by,
+        detail: r.detail.clone(),
+    }
+}
+
 /// Why a desk message is refused, when it is.
 ///
 /// Three groups:
@@ -1049,6 +1158,17 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
     match message {
         ClientMessage::AdminBooks { .. } | ClientMessage::AdminAudit { .. } => {
             Some("the books and the audit trail are the platform's, not one manager's")
+        }
+        // Configuring where money is sent is the platform's own banking,
+        // not a book to be worked.
+        ClientMessage::AdminPutPaymentMethod { .. }
+        | ClientMessage::AdminRemovePaymentMethod { .. } => {
+            Some("only an administrator may change where money is paid")
+        }
+        // Confirming money arrived credits an account, which is the same
+        // decision as a deposit and goes the same way.
+        ClientMessage::AdminSettleDeposit { credit, .. } if *credit => {
+            Some("money and going live are an administrator's to decide")
         }
         ClientMessage::AdminCreateUser { .. }
         | ClientMessage::AdminSetPassword { .. }
@@ -1410,6 +1530,147 @@ async fn administer(
                 Err(_) => ServerMessage::AdminResult {
                     done: false,
                     detail: "The engine did not answer.".to_owned(),
+                },
+            })
+        }
+
+        ClientMessage::AdminPutPaymentMethod {
+            id,
+            rail,
+            label,
+            address,
+            note,
+            enabled,
+        } => {
+            let Some(rail) = Rail::parse(&rail) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: "Not a payment rail I know.".to_owned(),
+                });
+            };
+            let put = gate
+                .payments
+                .lock()
+                .expect("the payment lock")
+                .put(id, rail, &label, &address, &note, enabled);
+            Ok(match put {
+                Ok(id) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!(
+                        "Saved {label} as method {id}{}.",
+                        if enabled { "" } else { ", switched off" }
+                    ),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::AdminRemovePaymentMethod { id } => {
+            let gone = gate.payments.lock().expect("the payment lock").remove(id);
+            Ok(match gone {
+                Ok(()) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!("Removed payment method {id}."),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::AdminDepositRequests => {
+            let users = gate.users.lock().expect("the user store lock");
+            let pay = gate.payments.lock().expect("the payment lock");
+            // A manager sees the claims of the clients in their book, and
+            // no others: a deposit names an account and an amount.
+            let book = (!session.is_admin()).then(|| users.book_of(session.user));
+            let mut requests: Vec<DepositRequestDto> = pay
+                .requests()
+                .iter()
+                .filter(|r| book.as_ref().is_none_or(|b| b.contains(&UserId(r.user))))
+                .map(|r| describe_request(r, &pay, &users))
+                .collect();
+            requests.sort_by_key(|r| std::cmp::Reverse(r.id));
+            Ok(ServerMessage::DepositRequests { requests })
+        }
+
+        ClientMessage::AdminSettleDeposit { id, credit, detail } => {
+            // Settled first, and only then credited: the claim can go from
+            // pending exactly once, so a double click cannot pay twice.
+            let settled = gate.payments.lock().expect("the payment lock").settle(
+                id,
+                session.user,
+                credit,
+                &detail,
+            );
+
+            let request = match settled {
+                Ok(r) => r,
+                Err(why) => {
+                    return Ok(ServerMessage::AdminResult {
+                        done: false,
+                        detail: format!("Refused: {why}"),
+                    })
+                }
+            };
+
+            if !credit {
+                return Ok(ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!("Deposit {id} refused. The client is told."),
+                });
+            }
+
+            // The money itself is an ordinary journaled deposit with the
+            // operator's name on it — the same event as any other, because
+            // it is the same fact.
+            let Ok(amount) = money::Money::parse(request.amount.trim()) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!(
+                        "The claim says {} and that is not an amount I can credit. Deposit it by hand.",
+                        request.amount
+                    ),
+                });
+            };
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let _ = commands
+                .send(Command::Administer {
+                    by: session.user,
+                    account: AccountId(request.account),
+                    action: AdminAction::Deposit(amount),
+                    reply: reply_tx,
+                })
+                .await;
+            Ok(match reply_rx.await {
+                Ok(AdminOutcome::Done) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!(
+                        "Deposit {id} confirmed: {} credited to account {}.",
+                        request.amount, request.account
+                    ),
+                },
+                // The claim is already closed — it can leave `pending` only
+                // once, which is what stops a double click paying twice —
+                // so a refusal here leaves money owed and uncredited. Say
+                // so plainly rather than reporting a success nobody got.
+                Ok(AdminOutcome::Refused(why)) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!(
+                        "Deposit {id} is marked confirmed but the engine refused the credit: {why}.                          Account {} has NOT been credited — deposit {} to it by hand.",
+                        request.account, request.amount
+                    ),
+                },
+                Err(_) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!(
+                        "Deposit {id} is marked confirmed but the engine did not answer.                          Check account {} before crediting it again.",
+                        request.account
+                    ),
                 },
             })
         }

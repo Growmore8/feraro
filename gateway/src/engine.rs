@@ -1205,6 +1205,30 @@ impl Engine {
         Ok(id)
     }
 
+    /// Whether this login already holds a demo account with time left.
+    ///
+    /// One demo per login, and only one at a time. A practice account is a
+    /// trial, and a trial somebody can take again the moment it ends — or
+    /// five of at once — is not a trial, it is an unlimited free product
+    /// with an expiry date on each copy.
+    ///
+    /// Expired ones do not count. The thirty days running out is the end of
+    /// that trial, and whether a client may start another is a commercial
+    /// decision the desk makes by renewing the old one or letting them open
+    /// a new one; what this refuses is holding two at once.
+    ///
+    /// Live accounts are not limited here. A client may hold several of
+    /// those — they are sub-accounts of a funded relationship, and the
+    /// money in them is already theirs.
+    fn has_a_running_demo(&self, user: UserId) -> bool {
+        let now = Self::now();
+        self.portfolio
+            .accounts_of(user)
+            .into_iter()
+            .filter_map(|id| self.portfolio.account(id))
+            .any(|a| !a.live && !a.demo_expired(now))
+    }
+
     /// Runs until the command channel closes.
     pub async fn run(mut self, mut rx: mpsc::Receiver<Command>) {
         while let Some(command) = rx.recv().await {
@@ -1367,6 +1391,8 @@ impl Engine {
             Command::OpenAccount { user, live, reply } => {
                 let outcome = if self.portfolio.accounts_of(user).len() >= ACCOUNTS_PER_USER {
                     Err("that is as many accounts as one login may hold")
+                } else if !live && self.has_a_running_demo(user) {
+                    Err("you already have a demo account")
                 } else {
                     let id = self.open_account(user)?;
                     if live {
@@ -3939,28 +3965,63 @@ mod tests {
     }
 
     #[test]
-    fn a_client_can_hold_several_accounts_up_to_a_limit() {
-        let s = Scratch::new("sub-accounts");
+    fn one_demo_account_per_login_and_only_one_at_a_time() {
+        let s = Scratch::new("one-demo");
         let (mut e, _rx) = engine(&s.0);
-        // The first came from signing in; these are the sub-accounts.
-        let second = open_for(&mut e, TRADER_USER, false).expect("opens");
-        let third = open_for(&mut e, TRADER_USER, false).expect("opens");
-        assert_ne!(second, third);
+        // The first came from signing in, and it has time left on it.
+        assert_eq!(e.portfolio.accounts_of(TRADER_USER).len(), 1);
+
+        let again = open_for(&mut e, TRADER_USER, false);
+        assert_eq!(
+            again,
+            Err("you already have a demo account".to_owned()),
+            "a trial somebody can take five of at once is not a trial"
+        );
         assert_eq!(
             e.portfolio.accounts_of(TRADER_USER).len(),
-            3,
-            "all three are under the same login"
+            1,
+            "the refusal opened nothing"
         );
-        // Each is funded and owned in its own right.
-        assert_eq!(e.portfolio.owner_of(third), Some(TRADER_USER));
-        assert_eq!(balance_of(&e, third), "25000.00");
+    }
+
+    #[test]
+    fn a_demo_that_has_run_out_does_not_block_another() {
+        let s = Scratch::new("expired-demo");
+        let (mut e, _rx) = engine(&s.0);
+        // Age the one they signed in with past its thirty days.
+        if let Some(a) = e.portfolio.account_mut(TRADER) {
+            a.clock_started = Engine::thirty_one_days_ago();
+        }
+
+        let fresh =
+            open_for(&mut e, TRADER_USER, false).expect("the trial ended, so another may start");
+        assert_ne!(fresh, TRADER);
+        assert_eq!(balance_of(&e, fresh), "25000.00");
+        books_agree(&e);
+
+        // And now that one is running, so it blocks the next.
+        assert!(open_for(&mut e, TRADER_USER, false).is_err());
+    }
+
+    #[test]
+    fn live_accounts_are_not_limited_to_one() {
+        let s = Scratch::new("sub-accounts");
+        let (mut e, _rx) = engine(&s.0);
+        // A demo is running, and a live account opens beside it: the rule
+        // is about trials, not about how many accounts a funded client has.
+        let first = open_for(&mut e, TRADER_USER, true).expect("opens");
+        let second = open_for(&mut e, TRADER_USER, true).expect("opens");
+        assert_ne!(first, second);
+        assert!(e.portfolio.account(first).expect("exists").live);
+        assert_eq!(e.portfolio.owner_of(second), Some(TRADER_USER));
+        assert_eq!(balance_of(&e, second), "25000.00");
         books_agree(&e);
 
         while e.portfolio.accounts_of(TRADER_USER).len() < ACCOUNTS_PER_USER {
-            open_for(&mut e, TRADER_USER, false).expect("opens");
+            open_for(&mut e, TRADER_USER, true).expect("opens");
         }
         assert!(
-            open_for(&mut e, TRADER_USER, false).is_err(),
+            open_for(&mut e, TRADER_USER, true).is_err(),
             "a script must not be able to open ten thousand of them"
         );
     }

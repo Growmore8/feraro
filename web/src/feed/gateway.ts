@@ -197,6 +197,51 @@ export type Role = 'client' | 'manager' | 'admin'
 export const asRole = (name: string): Role =>
   name === 'admin' ? 'admin' : name === 'manager' ? 'manager' : 'client'
 
+/** How money travels when a client pays in. */
+export type Rail = 'crypto' | 'upi' | 'bank'
+
+export const asRail = (name: string): Rail =>
+  name === 'crypto' ? 'crypto' : name === 'upi' ? 'upi' : 'bank'
+
+/** A way to pay money in, as the desk has set it up. */
+export interface PaymentMethod {
+  readonly id: number
+  readonly rail: Rail
+  readonly label: string
+  /** The wallet address, UPI id or bank details. Shown verbatim. */
+  readonly address: string
+  /** Anything the client must do to be credited. */
+  readonly note: string
+  /** Off means clients do not see it. Only the desk is sent these. */
+  readonly enabled: boolean
+}
+
+/** Where a deposit claim has got to. */
+export type Stage = 'pending' | 'credited' | 'refused'
+
+/**
+ * A client's claim that they have paid.
+ *
+ * `amount` is what the client says they sent — a claim, not a figure the
+ * platform has agreed to — so it stays a string until an operator confirms
+ * it. Nothing in the browser should add it up.
+ */
+export interface DepositRequest {
+  readonly id: number
+  readonly account: number
+  readonly user: number
+  readonly login: string | null
+  readonly method: number
+  readonly methodLabel: string
+  readonly rail: Rail
+  readonly amount: string
+  readonly reference: string
+  readonly at: number
+  readonly stage: Stage
+  readonly settledBy: number | null
+  readonly detail: string
+}
+
 /** How far a client has got with identity checks. */
 export type Kyc = 'none' | 'submitted' | 'approved' | 'rejected'
 
@@ -307,6 +352,12 @@ export interface GatewayState {
   readonly books: Books | null
   /** This account's movements, newest first. */
   readonly statement: readonly StatementLine[]
+  /** How money may be paid in. */
+  readonly methods: readonly PaymentMethod[]
+  /** This client's own deposit claims, newest first. */
+  readonly myDeposits: readonly DepositRequest[]
+  /** The desk's queue of claims to check. */
+  readonly deposits: readonly DepositRequest[]
   /** Who signed in, newest first. */
   readonly activity: readonly ActivityLine[]
   /**
@@ -628,6 +679,23 @@ export function handleFrame(
         event: { kind: 'unauthorized', detail: String(frame['detail'] ?? '') },
       }
 
+    case 'paymentMethods': {
+      const methods = Array.isArray(frame['methods'])
+        ? (frame['methods'] as Record<string, unknown>[]).map(parseMethod)
+        : []
+      const mine = Array.isArray(frame['mine'])
+        ? (frame['mine'] as Record<string, unknown>[]).map(parseRequest)
+        : []
+      return { patch: { methods, myDeposits: mine } }
+    }
+
+    case 'depositRequests': {
+      const requests = Array.isArray(frame['requests'])
+        ? (frame['requests'] as Record<string, unknown>[]).map(parseRequest)
+        : []
+      return { patch: { deposits: requests } }
+    }
+
     case 'adminBook': {
       const accounts = Array.isArray(frame['accounts'])
         ? (frame['accounts'] as Record<string, unknown>[]).map(parseAdminAccount)
@@ -948,6 +1016,32 @@ export interface OrderRequest {
   readonly limitPrice?: Price
 }
 
+const parseMethod = (m: Record<string, unknown>): PaymentMethod => ({
+  id: Number(m['id']),
+  rail: asRail(String(m['rail'] ?? 'bank')),
+  label: String(m['label'] ?? ''),
+  address: String(m['address'] ?? ''),
+  note: String(m['note'] ?? ''),
+  enabled: m['enabled'] !== false,
+})
+
+const parseRequest = (r: Record<string, unknown>): DepositRequest => ({
+  id: Number(r['id']),
+  account: Number(r['account']),
+  user: Number(r['user']),
+  login: typeof r['login'] === 'string' ? r['login'] : null,
+  method: Number(r['method']),
+  methodLabel: String(r['methodLabel'] ?? ''),
+  rail: asRail(String(r['rail'] ?? 'bank')),
+  amount: String(r['amount'] ?? ''),
+  reference: String(r['reference'] ?? ''),
+  at: Number(r['at'] ?? 0),
+  stage:
+    r['stage'] === 'credited' ? 'credited' : r['stage'] === 'refused' ? 'refused' : 'pending',
+  settledBy: r['settledBy'] === null || r['settledBy'] === undefined ? null : Number(r['settledBy']),
+  detail: String(r['detail'] ?? ''),
+})
+
 /** A live connection to the gateway. */
 export class GatewayClient {
   private socket: WebSocket | null = null
@@ -1013,6 +1107,40 @@ export class GatewayClient {
 
   adminSetRole(user: number, role: Role): void {
     this.send({ type: 'adminSetRole', user, role })
+  }
+
+  /** Asks how money may be paid in. */
+  paymentMethods(): void {
+    this.send({ type: 'paymentMethods' })
+  }
+
+  /** Tells the desk money has been sent. A claim, not a payment. */
+  requestDeposit(method: number, amount: string, reference: string): void {
+    this.send({ type: 'depositRequested', method, amount, reference })
+  }
+
+  adminPutPaymentMethod(m: {
+    id: number | null
+    rail: Rail
+    label: string
+    address: string
+    note: string
+    enabled: boolean
+  }): void {
+    this.send({ type: 'adminPutPaymentMethod', ...m })
+  }
+
+  adminRemovePaymentMethod(id: number): void {
+    this.send({ type: 'adminRemovePaymentMethod', id })
+  }
+
+  adminDepositRequests(): void {
+    this.send({ type: 'adminDepositRequests' })
+  }
+
+  /** Confirms the money arrived, or says it did not. */
+  adminSettleDeposit(id: number, credit: boolean, detail: string): void {
+    this.send({ type: 'adminSettleDeposit', id, credit, detail })
   }
 
   /** Opens another account for a client, as the desk does over the phone. */
