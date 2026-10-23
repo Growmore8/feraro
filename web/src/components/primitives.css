@@ -239,3 +239,50 @@
   background: var(--chrome);
   border-top: 1px solid var(--rule-strong);
 }
+
+
+/* ── Pearl ──
+   Rows separated by a hairline and a little air rather than by a grid.
+   The header is the quietest thing on the table: it is read once. */
+
+.table th {
+  padding: 7px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.table td {
+  padding: 7px 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.table tbody tr:first-child td {
+  border-top: none;
+}
+
+.table tbody tr:hover {
+  background: var(--chrome);
+}
+
+.table tbody tr.row-active {
+  background: var(--accent-wash);
+}
+
+.table tfoot .table-total td {
+  background: var(--panel);
+}
+
+/* Direction and state, as pills. */
+.pill {
+  padding: 2px 9px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: var(--r-pill);
+}

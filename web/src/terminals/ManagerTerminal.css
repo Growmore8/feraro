@@ -1028,3 +1028,167 @@
   border-top: 1px solid var(--rule);
   border-bottom: none;
 }
+
+
+/* ── Pearl ──
+   The desk screen in the shared language: panels become cards with soft
+   corners, the rules between them become space, and the only hard colour
+   left is on something that means buy, sell, or stop. */
+
+.mgr-bar {
+  padding: 7px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+}
+
+.mgr-pill {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border-color: color-mix(in srgb, var(--profit) 40%, transparent);
+  background: var(--profit-wash);
+}
+
+.mgr-body {
+  gap: 8px;
+  padding: 8px;
+  background: var(--ground);
+}
+
+.mgr-upper {
+  gap: 8px;
+}
+
+.mgr-clients,
+.mgr-chart,
+.mgr-watch,
+.mgr-toolbox {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+/* The splitters sit in the gap rather than being a line of their own. */
+.split-vertical {
+  width: 8px;
+}
+
+.split-horizontal {
+  height: 8px;
+}
+
+.mgr-status {
+  margin: 0;
+  padding: 7px 12px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+}
+
+.panel-head {
+  padding: 8px 11px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Navigator rows get room to breathe and a rounded selection. */
+.mgr-acct {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-radius: var(--r-sm);
+}
+
+.mgr-acct:hover {
+  background: var(--chrome);
+}
+
+.mgr-acct.on {
+  background: var(--accent-wash);
+}
+
+.mgr-find {
+  border-radius: var(--r-md);
+}
+
+.mgr-find-row {
+  padding: 7px 9px;
+}
+
+/* Status words become pills. */
+.mgr-kyc {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+}
+
+.kyc-approved {
+  color: var(--profit);
+  background: var(--profit-wash);
+}
+
+.kyc-submitted {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.kyc-rejected {
+  color: var(--loss);
+  background: var(--danger-wash);
+}
+
+/* Tabs at the foot of a pane, as pills rather than file tabs. */
+.mgr-foot-tabs,
+.blotter-tabs-foot {
+  gap: 3px;
+  padding: 4px 6px;
+  background: var(--panel);
+}
+
+.mgr-foot-tabs button,
+.blotter-tabs-foot button {
+  border: none;
+  border-radius: var(--r-sm);
+}
+
+.mgr-foot-tabs button.on,
+.blotter-tabs-foot button.on {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.blotter-tabs-foot button.on .tab-count {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.symtab {
+  border-bottom: none;
+  border-radius: var(--r-sm);
+}
+
+.symtab.on {
+  background: var(--accent);
+}
+
+.symtab.on .symtab-pick,
+.symtab.on .symtab-shut {
+  color: var(--accent-ink);
+}
+
+/* Buttons. */
+.mgr-plain,
+.mgr-mini {
+  border-radius: var(--r-sm);
+}
+
+.mgr-go {
+  border-radius: var(--r-sm);
+}
+
+.mgr-bulk {
+  background: var(--panel);
+}

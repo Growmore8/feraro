@@ -24,6 +24,7 @@ import { Fragment, useMemo, useState } from 'react'
 import type { FeedQuote } from '../feed/types'
 import type { GatewayInstrument } from '../feed/gateway'
 import type { Instrument } from '../lib/domain'
+import { Badge } from './Badge'
 import { showPrice } from '../lib/money'
 
 /** Short tags in the table, full names on hover and in the status bar. */
@@ -125,7 +126,7 @@ export function MarketWatch({
         <table className="table mw">
           <thead>
             <tr>
-              <th style={{ width: 86 }}>Symbol</th>
+              <th style={{ width: 118 }}>Symbol</th>
               <th className="num">Bid</th>
               <th className="num">Ask</th>
               <th className="num" style={{ width: 44 }} title="Spread, in points">
@@ -162,12 +163,21 @@ export function MarketWatch({
                           // symbol the pointer was over.
                           data-instrument={inst.id}
                         >
-                          <td className={`sym${note ? ' dim' : ''}`}>{inst.symbol}</td>
-                          <td className="num sell">
-                            {q ? showPrice(q.bid, inst.displayDigits) : '—'}
+                          <td className={`sym${note ? ' dim' : ''}`}>
+                            <span className="mw-sym">
+                              <Badge symbol={inst.symbol} size={20} />
+                              {inst.symbol}
+                            </span>
                           </td>
-                          <td className="num buy">
-                            {q ? showPrice(q.ask, inst.displayDigits) : '—'}
+                          <td className="num">
+                            <span className="px px-bid">
+                              {q ? showPrice(q.bid, inst.displayDigits) : '—'}
+                            </span>
+                          </td>
+                          <td className="num">
+                            <span className="px px-ask">
+                              {q ? showPrice(q.ask, inst.displayDigits) : '—'}
+                            </span>
                           </td>
                           <td className="num dim">{spread === null ? '—' : String(spread)}</td>
                           <td

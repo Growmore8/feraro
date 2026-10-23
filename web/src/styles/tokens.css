@@ -21,20 +21,31 @@
  */
 
 :root {
-  /* Window chrome */
-  --ground: #f0f0f0;
-  --chrome: #e9ecef;
+  /* Window chrome — pearl.
+     Warm rather than grey: a screen somebody reads for eight hours should
+     not be the colour of a filing cabinet. The panels stay pure white so
+     that a figure sits on the brightest surface in the room, and every rule
+     is a hairline — the layout is held together by space and radius, not by
+     lines. */
+  --ground: #f6f4f0;
+  --chrome: #efece6;
   --panel: #ffffff;
-  --row-active: #fff4bf;
-  --row-tint: #e4f2de;
-  --rule: #c8cdd2;
-  --rule-strong: #a6adb4;
-  --track: #e2e6ea;
+  --row-active: #fdf4d8;
+  --row-tint: #eef5ea;
+  --rule: #e6e2da;
+  --rule-strong: #d3cec3;
+  --track: #ebe8e1;
 
-  --ink: #1a1d20;
-  --ink-2: #454b52;
-  --ink-3: #6b747c;
-  --ink-4: #9aa2aa;
+  --ink: #1b1d21;
+  --ink-2: #4a4f57;
+  --ink-3: #6f767f;
+  --ink-4: #9ca3ac;
+
+  /* Corners. One scale, so nothing is rounded by accident. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
 
   /* The brand.
      Used on the sign-in screen and nowhere a figure is read: a balance must
@@ -45,22 +56,6 @@
   --brand-wash: #e6e3fb;
   --brand-gold: #d8a33a;
   --brand-gold-ink: #a97d1d;
-
-  /* The phone.
-     Dark in both themes, like the menu and the ticket: a trading screen held
-     at arm's length in daylight or in bed is read in the dark far more often
-     than not, and a phone app that changes weight with a desktop preference
-     is one nobody set. */
-  --mob-bg: #0f151c;
-  --mob-chrome: #141b24;
-  --mob-card: #18212b;
-  --mob-raise: #222d3a;
-  --mob-rule: #27333f;
-  --mob-ink: #e6edf3;
-  --mob-dim: #8696a6;
-  --mob-accent: #2b3f9e;
-  --mob-accent-soft: #6f8ef5;
-  --mob-gold: #e2b355;
 
   /* The phone.
      Dark in both themes, like the menu and the ticket: a trading screen held

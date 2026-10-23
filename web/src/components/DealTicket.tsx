@@ -44,8 +44,26 @@ import type { Instrument, Side } from '../lib/domain'
 import type { Price, Qty } from '../lib/money'
 import { qty, showPrice } from '../lib/money'
 
-/** The sizes the dropdown offers, in lots. */
-const SIZES = ['0.01', '0.05', '0.10', '0.50', '1.00', '5.00'] as const
+/** The quick sizes under the stepper. */
+const SIZES = ['0.01', '0.05', '0.10', '0.50', '1.00'] as const
+
+/**
+ * One press of − or +.
+ *
+ * Steps by the last decimal place shown, so 0.01 moves in hundredths and
+ * 1.0 moves in tenths — the same behaviour a spin control has anywhere
+ * else. Anything unparseable goes back to the smallest size rather than
+ * staying stuck.
+ */
+function stepLots(current: string, by: number): string {
+  const text = current.trim()
+  const places = text.includes('.') ? text.length - text.indexOf('.') - 1 : 0
+  const step = 10 ** -Math.max(places, 2)
+  const now = Number(text)
+  if (!Number.isFinite(now)) return SIZES[0]
+  const next = now + by * step
+  return next <= 0 ? SIZES[0] : next.toFixed(Math.max(places, 2))
+}
 
 /**
  * How far one click moves the price.
@@ -97,7 +115,6 @@ export function DealTicket({
 }: DealTicketProps) {
   const [lots, setLots] = useState('0.01')
   const [open, setOpen] = useState(true)
-  const [sizes, setSizes] = useState(false)
 
   /** Ticks away from the market, per side. Zero is a market order. */
   const [off, setOff] = useState<{ sell: bigint; buy: bigint }>({ sell: 0n, buy: 0n })
@@ -210,15 +227,16 @@ export function DealTicket({
   const priceButton = (aim: Resting | null, side: Side) => (
     <button
       type="button"
-      className={`dt-price dt-${side}${aim && aim.kind !== 'market' ? ' dt-resting' : ''}`}
+      className={`deal deal-${side}${aim && aim.kind !== 'market' ? ' dt-resting' : ''}`}
       disabled={!armed || !aim}
       onClick={() => aim && volume && onPlace(aim, volume)}
       title={blocked ?? `${words(aim, side)}, on account ${account}`}
     >
-      <span className="mono dt-px">
-        {aim ? showPrice(aim.price, instrument.displayDigits) : '—'}
+      <span>
+        {side === 'sell' ? 'SELL' : 'BUY'}
+        <span className="dt-kind"> {label(aim, side)}</span>
       </span>
-      <span className="dt-way">({label(aim, side)})</span>
+      <b>{aim ? showPrice(aim.price, instrument.displayDigits) : '—'}</b>
     </button>
   )
 
@@ -239,43 +257,42 @@ export function DealTicket({
       {arrow('sell', 'up')}
 
       <span className="dt-size">
-        <input
-          className="mono dt-input"
-          value={lots}
-          onChange={(e) => setLots(e.target.value)}
-          inputMode="decimal"
-          spellCheck={false}
-          aria-label="Volume in lots"
-        />
-        <button
-          type="button"
-          className="dt-sizes"
-          aria-label="Choose a volume"
-          aria-expanded={sizes}
-          onClick={() => setSizes((o) => !o)}
-        >
-          ▾
-        </button>
-        {sizes ? (
-          <>
-            <span className="dt-catch" onPointerDown={() => setSizes(false)} />
-            <span className="dt-sizelist" role="menu">
-              {SIZES.map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  className="mono"
-                  onClick={() => {
-                    setLots(size)
-                    setSizes(false)
-                  }}
-                >
-                  {size}
-                </button>
-              ))}
-            </span>
-          </>
-        ) : null}
+        <span className="stepper">
+          <button
+            type="button"
+            aria-label="Smaller"
+            onClick={() => setLots(stepLots(lots, -1))}
+          >
+            −
+          </button>
+          <input
+            className="mono"
+            value={lots}
+            onChange={(e) => setLots(e.target.value)}
+            inputMode="decimal"
+            spellCheck={false}
+            aria-label="Volume in lots"
+          />
+          <button
+            type="button"
+            aria-label="Larger"
+            onClick={() => setLots(stepLots(lots, 1))}
+          >
+            +
+          </button>
+        </span>
+        <span className="chips">
+          {SIZES.map((size) => (
+            <button
+              key={size}
+              type="button"
+              className={size === lots.trim() ? 'on' : undefined}
+              onClick={() => setLots(size)}
+            >
+              {size}
+            </button>
+          ))}
+        </span>
       </span>
 
       {arrow('buy', 'down')}

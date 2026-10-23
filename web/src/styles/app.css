@@ -18,18 +18,10 @@
 
 /* The deal ticket over the chart.
 
-   It sits on the candles, so it has to read against black without becoming
-   the brightest thing on screen — the price is. Hence a deep blue that is
-   plainly a button but darker than the chart's own greens and reds, and a
-   panel behind it dark enough that the ticket is one object rather than
-   four floating ones.
-
-   Sell and buy take the same two colours they take everywhere else in this
-   platform — blue for the bid side, red for the ask side — because one
-   direction convention across a screen is worth more than matching any
-   reference. The arrows are deliberately colourless: they mean "down" and
-   "up from here", not buy and sell, and colouring them would put a second
-   meaning on the only two colours that already have one. */
+   It sits on the candles, so it is a card in its own right — rounded, with
+   its own surface — rather than a strip of controls floating loose. The
+   arrows stay colourless: they mean "down" and "up from here", and the two
+   colours this platform has already mean sell and buy. */
 
 .dt {
   position: absolute;
@@ -37,197 +29,80 @@
   left: 12px;
   z-index: 3;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 3px;
-  background: rgb(18 24 31 / 92%);
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 4px;
-  box-shadow: 0 8px 22px rgb(0 0 0 / 45%);
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  box-shadow: 0 10px 28px rgb(23 20 14 / 18%);
 }
 
-.dt-price {
+.dt .deal {
+  min-width: 118px;
+}
+
+/* Pointed away from the market: this rests an order rather than dealing at
+   the touch. It keeps its side's colour — it is still a sell or a buy — and
+   goes flat and outlined so the two states are told apart without spending
+   a third colour. */
+.dt-resting {
+  filter: saturate(0.7) brightness(0.9);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 60%);
+}
+
+.dt-kind {
+  opacity: 0.75;
+}
+
+.dt-size {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 112px;
-  padding: 6px 13px;
+  flex-direction: column;
+  gap: 5px;
+  width: 168px;
+}
+
+.dt-arrow {
+  width: 26px;
+  height: 34px;
+  align-self: flex-end;
   font: inherit;
-  color: #fff;
-  border: none;
-  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-3);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 
-.dt-sell {
-  background: linear-gradient(180deg, var(--dt-sell-lift), var(--dt-sell));
+.dt-arrow:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink-4);
 }
 
-.dt-buy {
-  background: linear-gradient(180deg, var(--dt-buy-lift), var(--dt-buy));
-}
-
-.dt-price:hover:not(:disabled) {
-  filter: brightness(1.14);
-}
-
-.dt-price:active:not(:disabled) {
-  filter: brightness(0.92);
-}
-
-/* Pointed away from the market: this will rest an order, not deal at the
-   touch. It keeps its side's colour — it is still a sell or a buy — but goes
-   flat and outlined, so "about to rest" and "at the touch" are told apart
-   without spending a third colour on it. */
-.dt-price.dt-resting {
-  filter: saturate(0.72) brightness(0.82);
-  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 55%);
-}
-
-.dt-price:disabled,
 .dt-arrow:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.dt-px {
-  font-size: 14.5px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.dt-way {
-  font-size: 10.5px;
-  font-weight: 600;
-  opacity: 0.8;
-}
-
-/* The arrows: which way the price moves, not which way it trades. */
-.dt-arrow {
-  width: 25px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  color: #fff;
-  border: none;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.dt-arrow-down,
-.dt-arrow-up {
-  color: rgb(255 255 255 / 78%);
-  background: rgb(255 255 255 / 11%);
-}
-
-.dt-arrow-down:hover:not(:disabled),
-.dt-arrow-up:hover:not(:disabled) {
-  color: #fff;
-  background: rgb(255 255 255 / 20%);
-}
-
-.dt-arrow:hover:not(:disabled) {
-  filter: brightness(1.16);
-}
-
-.dt-arrow:active:not(:disabled) {
-  filter: brightness(0.9);
-}
-
-.dt-size {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  background: rgb(255 255 255 / 96%);
-  border-radius: 3px;
-}
-
-.dt-input {
-  width: 58px;
-  padding: 0 6px;
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-align: center;
-  color: #16202a;
-  background: transparent;
-  border: none;
-}
-
-.dt-input:focus-visible {
-  outline: 2px solid var(--dt-price);
-  outline-offset: -2px;
-  border-radius: 3px;
-}
-
-.dt-sizes {
-  width: 17px;
-  padding: 0;
-  font: inherit;
-  font-size: 9px;
-  color: #5a6672;
-  background: transparent;
-  border: none;
-  border-left: 1px solid rgb(0 0 0 / 14%);
-  cursor: pointer;
-}
-
-.dt-sizes:hover {
-  color: #16202a;
-}
-
-.dt-catch {
-  position: fixed;
-  inset: 0;
-  z-index: 4;
-}
-
-.dt-sizelist {
-  position: absolute;
-  top: calc(100% + 3px);
-  left: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  min-width: 100%;
-  padding: 2px;
-  background: #fff;
-  border-radius: 3px;
-  box-shadow: 0 8px 20px rgb(0 0 0 / 40%);
-}
-
-.dt-sizelist button {
-  padding: 4px 10px;
-  font: inherit;
-  font-size: 12px;
-  text-align: right;
-  color: #16202a;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.dt-sizelist button:hover {
-  background: #e8eef5;
-}
-
 .dt-on {
   align-self: center;
-  padding: 0 9px;
+  padding: 0 6px;
   font-size: 10px;
-  color: rgb(255 255 255 / 55%);
+  color: var(--ink-4);
 }
 
 .dt-refuse {
-  color: #ffc46b;
+  color: var(--warn);
 }
 
 .dt-reset {
   padding: 0;
   font: inherit;
   font-size: 10px;
-  color: #7cc0ff;
+  color: var(--accent);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -238,21 +113,18 @@
 }
 
 .dt-fold {
-  width: 20px;
+  width: 24px;
+  height: 34px;
+  align-self: flex-end;
   padding: 0;
   font: inherit;
   font-size: 14px;
   line-height: 1;
-  color: rgb(255 255 255 / 55%);
-  background: rgb(255 255 255 / 10%);
-  border: none;
-  border-radius: 3px;
+  color: var(--ink-3);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
   cursor: pointer;
-}
-
-.dt-fold:hover {
-  color: #fff;
-  background: rgb(255 255 255 / 18%);
 }
 
 .dt-reopen {
@@ -260,21 +132,22 @@
   top: 10px;
   left: 12px;
   z-index: 3;
-  padding: 5px 11px;
+  padding: 7px 13px;
   font: inherit;
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 80%);
-  background: rgb(18 24 31 / 92%);
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 3px;
+  color: var(--ink-2);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  box-shadow: 0 6px 18px rgb(23 20 14 / 16%);
   cursor: pointer;
 }
 
 .dt-reopen:hover {
-  color: #fff;
-  border-color: rgb(255 255 255 / 30%);
+  color: var(--ink);
 }
 
 /* The market watch's search box and its folding groups. */
@@ -1003,3 +876,251 @@
 .dep-pending .dep-stage { color: var(--warn); }
 .dep-credited .dep-stage { color: var(--profit); }
 .dep-refused .dep-stage { color: var(--loss); }
+
+
+/* ── The shared visual language ──
+
+   Rounded cards, hairline rules, and colour used only where it carries
+   meaning. The layout is held together by space and radius rather than by
+   lines, which is what lets a dense trading screen stay readable for eight
+   hours.
+
+   Everything here is shared between the desk, the client screen and the
+   phone, so a price pill means one thing in all three. */
+
+/* The round mark beside an instrument. */
+.badge {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 800;
+  line-height: 1;
+  border-radius: 50%;
+  letter-spacing: -0.02em;
+}
+
+/* A price, set apart so the eye lands on it.
+   Bid and ask take the platform's two direction colours — the same two the
+   deal ticket and the blotter use — so a price is never a different colour
+   depending on where it is read. */
+.px {
+  display: inline-block;
+  min-width: 72px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+
+.px-bid {
+  color: var(--sell);
+  background: var(--sell-wash);
+  border-color: color-mix(in srgb, var(--sell) 18%, transparent);
+}
+
+.px-ask {
+  color: var(--buy);
+  background: var(--buy-wash);
+  border-color: color-mix(in srgb, var(--buy) 18%, transparent);
+}
+
+/* A segmented control: timeframes, Trade/Pending, Day/Week/Month. */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+}
+
+.seg button {
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--r-md) - 3px);
+  cursor: pointer;
+}
+
+.seg button:hover:not(.on) {
+  color: var(--ink);
+}
+
+.seg button.on {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+/* A status word: approved, pending, live, suspended. */
+.tag {
+  display: inline-block;
+  padding: 2px 9px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: var(--r-pill);
+}
+
+.tag-ok {
+  color: var(--profit);
+  background: var(--profit-wash);
+}
+
+.tag-warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.tag-bad {
+  color: var(--loss);
+  background: var(--danger-wash);
+}
+
+.tag-quiet {
+  color: var(--ink-3);
+  background: var(--chrome);
+}
+
+/* A volume stepper: − [0.01] + */
+.stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.stepper button {
+  width: 34px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.stepper button:hover {
+  color: var(--ink);
+  border-color: var(--ink-4);
+}
+
+.stepper input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+}
+
+/* The quick sizes under it. */
+.chips {
+  display: flex;
+  gap: 5px;
+}
+
+.chips button {
+  flex: 1;
+  padding: 5px 2px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.chips button.on {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: transparent;
+}
+
+/* The two that deal. Stacked word over price, because the price is what is
+   being agreed to and it should be the thing under the thumb. */
+.deal-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.deal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.deal b {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-sell {
+  background: var(--sell);
+}
+
+.deal-buy {
+  background: var(--buy);
+}
+
+.deal:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.deal:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* A card. The unit the whole product is built from. */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+}
+
+.card-soft {
+  background: var(--ground);
+}
+
+/* A symbol with its mark. */
+.mw-sym {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+
+/* The pills need the row to breathe, so the watch list loosens up. */
+.table.mw td {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
