@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "The servers this terminal offers. Edit on the server; no rebuild needed.",
+    "Each needs a name a trader will recognise and a ws:// or wss:// address.",
+    "Leave one entry and the picker does not appear - the terminal then just",
+    "uses it. Anything reachable from the internet must be wss://, never ws://."
+  ],
+  "servers": [
+    { "name": "Feraro Demo", "url": "ws://127.0.0.1:8081", "note": "practice accounts" }
+  ]
+}

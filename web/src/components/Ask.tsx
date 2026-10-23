@@ -1,14 +1,15 @@
 /**
- * A small modal for the one or two values an action needs.
+ * The dialog an action opens when it needs a figure.
  *
- * `window.prompt` takes a string with no label, no second field and no
+ * `window.prompt` takes one string with no label, no second field and no
  * context, and on a desk the context is the point: an amount typed against
  * the wrong account is the mistake this screen exists to prevent. So the
- * dialog names its subject, says what will happen, and focuses the first
- * field.
+ * dialog wears its subject — the account number and whose it is — in the
+ * header, beside an icon that says which action this is.
  *
- * Enter submits, Escape cancels, and the backdrop cancels — the three things
- * hands already expect.
+ * Enter submits, Escape cancels, the backdrop cancels, and the first field
+ * is focused and selected so a figure already there is replaced by typing
+ * rather than appended to.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -24,12 +25,18 @@ export interface AskField {
   readonly initial?: string
   /** False when the action can proceed without it. */
   readonly required?: boolean
+  /** Lays this field beside the previous one rather than under it. */
+  readonly beside?: boolean
 }
 
 export interface AskProps {
   readonly title: string
-  /** What the action is about to do, in the words the confirmation would use. */
-  readonly note?: string
+  /** Who or what this acts on, under the title. */
+  readonly subject?: string | undefined
+  /** One glyph, in the disc beside the title. */
+  readonly icon?: string | undefined
+  /** What the action is about to do, in the words the confirmation uses. */
+  readonly note?: string | undefined
   readonly fields: readonly AskField[]
   readonly submitLabel: string
   readonly tone?: 'danger'
@@ -39,6 +46,8 @@ export interface AskProps {
 
 export function Ask({
   title,
+  subject,
+  icon,
   note,
   fields,
   submitLabel,
@@ -85,13 +94,33 @@ export function Ask({
           if (e.key === 'Enter') submit()
         }}
       >
-        <header className="ask-head">{title}</header>
+        <header className="ask-head">
+          {icon ? (
+            <span className="ask-icon" aria-hidden="true">
+              {icon}
+            </span>
+          ) : null}
+          <span className="ask-who">
+            <span className="ask-title">{title}</span>
+            {subject ? <span className="ask-subject">{subject}</span> : null}
+          </span>
+          <button
+            type="button"
+            className="ask-shut"
+            onClick={onCancel}
+            aria-label="Close"
+            title="Close"
+          >
+            ×
+          </button>
+        </header>
+
         {note ? <p className="ask-note">{note}</p> : null}
 
         <div className="ask-fields">
           {fields.map((f, i) => (
-            <label key={f.key} className="ask-field">
-              <span className="cap">{f.label}</span>
+            <label key={f.key} className={`ask-field${f.beside ? ' ask-beside' : ''}`}>
+              <span className="ask-label">{f.label}</span>
               {f.choices ? (
                 <select
                   ref={i === 0 ? (first as React.Ref<HTMLSelectElement>) : undefined}
@@ -121,7 +150,7 @@ export function Ask({
         </div>
 
         <footer className="ask-feet">
-          <button type="button" className="mgr-plain" onClick={onCancel}>
+          <button type="button" className="ask-cancel" onClick={onCancel}>
             Cancel
           </button>
           <button

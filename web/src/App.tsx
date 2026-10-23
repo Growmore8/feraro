@@ -4,6 +4,47 @@ import { ManagerTerminal } from './terminals/ManagerTerminal'
 import { ClientTerminal } from './terminals/ClientTerminal'
 import { MobileTerminal } from './terminals/MobileTerminal'
 import { SignIn } from './terminals/SignIn'
+import type { Server } from './feed/servers'
+import { loadServers, remember, remembered, thisOrigin } from './feed/servers'
+
+/**
+ * Which servers this site offers, and which one is chosen.
+ *
+ * The list is fetched once. Until it arrives the terminal already has a
+ * usable answer — the origin that served the page — so the sign-in screen
+ * never waits on a file that may not exist.
+ */
+function useServers(): {
+  servers: readonly Server[]
+  chosen: Server
+  choose: (s: Server) => void
+} {
+  const [servers, setServers] = useState<readonly Server[]>(() => [thisOrigin()])
+  const [chosen, setChosen] = useState<Server>(() => thisOrigin())
+
+  useEffect(() => {
+    let live = true
+    void loadServers().then((listed) => {
+      if (!live) return
+      setServers(listed)
+      // The one they used last, or the first offered. Never a different
+      // server than the one they signed in to yesterday without saying so.
+      setChosen(remembered(listed) ?? listed[0] ?? thisOrigin())
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  return {
+    servers,
+    chosen,
+    choose: (s: Server) => {
+      remember(s)
+      setChosen(s)
+    },
+  }
+}
 
 /**
  * Below this width the desk layout stops being a layout.
@@ -41,7 +82,11 @@ function usePhone(): boolean {
  */
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
-  const gw = useGateway()
+  const { servers, chosen, choose } = useServers()
+  // Changing server reopens the socket, because it is a different platform
+  // — different accounts, a different journal, and a session that means
+  // nothing on the other one.
+  const gw = useGateway(chosen.url)
   const phone = usePhone()
   const flip = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
@@ -58,6 +103,9 @@ export default function App() {
         error={gw.authError}
         onSignIn={gw.signIn}
         onTheme={flip}
+        servers={servers}
+        server={chosen}
+        onServer={choose}
       />
     )
   }

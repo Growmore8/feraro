@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { AuthStage } from '../feed/gateway'
+import type { Server } from '../feed/servers'
 import type { FeedState } from '../feed/types'
 import './SignIn.css'
 
@@ -34,9 +35,31 @@ export interface SignInProps {
   onSignIn(login: string, password: string): void
   /** Flips the palette. This page is often the first thing anybody sees. */
   onTheme?: (() => void) | undefined
+  /**
+   * The servers this site offers.
+   *
+   * One terminal serves several deployments — a demo server and a live one,
+   * a server per region — and they are separate platforms with separate
+   * accounts. The choice belongs here, beside the credentials it goes with:
+   * discovering it after signing in is too late, because the password has
+   * already been sent somewhere.
+   */
+  readonly servers?: readonly Server[] | undefined
+  readonly server?: Server | undefined
+  onServer?: ((server: Server) => void) | undefined
 }
 
-export function SignIn({ auth, status, detail, error, onSignIn, onTheme }: SignInProps) {
+export function SignIn({
+  auth,
+  status,
+  detail,
+  error,
+  onSignIn,
+  onTheme,
+  servers = [],
+  server,
+  onServer,
+}: SignInProps) {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -112,6 +135,31 @@ export function SignIn({ auth, status, detail, error, onSignIn, onTheme }: SignI
           <h2 className="signin-title">Sign in to your dashboard</h2>
           <p className="signin-sub">Back office console</p>
 
+          {servers.length > 1 && server && onServer ? (
+            <label className="signin-field">
+              <span className="signin-label">Server</span>
+              <span className="signin-wrap">
+                <ServerIcon />
+                <select
+                  className="signin-input signin-pick"
+                  value={server.url}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const picked = servers.find((s) => s.url === e.target.value)
+                    if (picked) onServer(picked)
+                  }}
+                >
+                  {servers.map((s) => (
+                    <option key={s.url} value={s.url}>
+                      {s.name}
+                      {s.note ? ` — ${s.note}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          ) : null}
+
           <label className="signin-field">
             <span className="signin-label">Email address</span>
             <span className="signin-wrap">
@@ -182,6 +230,12 @@ export function SignIn({ auth, status, detail, error, onSignIn, onTheme }: SignI
         </form>
 
         <footer className="signin-foot">
+          {server ? (
+            <span className="signin-at" title={server.url}>
+              <span className={`signin-bead${reachable ? ' on' : ''}`} aria-hidden="true" />
+              {server.name}
+            </span>
+          ) : null}
           <span>© {new Date().getFullYear()} Feraro</span>
           <span className="mono">v0.1.0</span>
         </footer>
@@ -299,6 +353,22 @@ const EyeIcon = ({ off }: { off: boolean }) => (
     <path d="M1.5 8S4 3.8 8 3.8 14.5 8 14.5 8 12 12.2 8 12.2 1.5 8 1.5 8Z" />
     <circle cx="8" cy="8" r="2" />
     {off ? <path d="M2.5 2.5l11 11" /> : null}
+  </svg>
+)
+
+const ServerIcon = () => (
+  <svg
+    className="signin-icon"
+    width="14"
+    height="14"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.3"
+  >
+    <rect x="2" y="2.5" width="12" height="4.5" rx="1" />
+    <rect x="2" y="9" width="12" height="4.5" rx="1" />
+    <path d="M4.5 4.75h.01M4.5 11.25h.01" strokeLinecap="round" strokeWidth="1.8" />
   </svg>
 )
 

@@ -667,7 +667,11 @@
   }
 }
 
-/* The small dialog an action opens when it needs a figure. */
+/* The dialog an action opens when it needs a figure.
+
+   It wears its subject in the header — the account and whose it is —
+   because the mistake this screen exists to prevent is an amount typed
+   against the wrong one. */
 
 .ask-back {
   position: fixed;
@@ -675,75 +679,164 @@
   z-index: 70;
   display: grid;
   place-items: center;
-  background: rgb(0 0 0 / 38%);
+  padding: 16px;
+  background: rgb(0 0 0 / 46%);
 }
 
 .ask {
-  width: min(380px, calc(100vw - 32px));
+  width: min(430px, 100%);
   background: var(--panel);
   border: 1px solid var(--rule-strong);
-  box-shadow: 0 18px 44px rgb(0 0 0 / 40%);
+  border-radius: 10px;
+  box-shadow: 0 20px 48px rgb(0 0 0 / 42%);
 }
 
 .ask-head {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
   background: var(--chrome);
   border-bottom: 1px solid var(--rule);
+  border-radius: 9px 9px 0 0;
+}
+
+.ask-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 8px;
+}
+
+.ask-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ask-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ask-subject {
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-shut {
+  margin-left: auto;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--ink-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.ask-shut:hover {
+  color: var(--loss);
 }
 
 .ask-note {
   margin: 0;
-  padding: 8px 12px 0;
-  font-size: 11px;
-  line-height: 1.45;
+  padding: 10px 14px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
   color: var(--ink-3);
 }
 
+/* Two columns, so a pair of short fields sits on one line as a form
+   should. A field marked `beside` joins the one before it. */
 .ask-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px 14px;
 }
 
 .ask-field {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+}
+
+.ask-beside,
+.ask-field:has(+ .ask-beside) {
+  grid-column: span 1;
+}
+
+.ask-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
 }
 
 .ask-input {
-  padding: 5px 7px;
+  padding: 9px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--ink);
   background: var(--ground);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
 }
 
 .ask-input:focus-visible {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--profit);
+  box-shadow: 0 0 0 3px var(--profit-wash);
 }
 
 .ask-feet {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: 0 12px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.ask-cancel,
+.ask-go {
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.ask-cancel {
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+}
+
+.ask-cancel:hover {
+  color: var(--ink);
+  border-color: var(--ink-4);
 }
 
 .ask-go {
-  padding: 5px 14px;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
   color: var(--accent-ink);
   background: var(--accent);
   border: none;
-  cursor: pointer;
+}
+
+.ask-go:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
 .ask-go:disabled {

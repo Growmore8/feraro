@@ -107,6 +107,36 @@ const REFRESH_MS = 4_000
 
 type Tab = 'Trade' | 'History' | 'Net Trade' | 'Deposits' | 'Audit'
 
+/**
+ * Why money moved, per kind of movement.
+ *
+ * Chosen from a list rather than typed, because the journal's wire format
+ * is fixed-width: there is no variable-length string in it, so a free-text
+ * description would be collected and then thrown away. A known set also
+ * makes the audit trail countable, which prose never is.
+ */
+const REASONS: Record<string, readonly { value: string; label: string }[]> = {
+  deposit: [
+    { value: 'Deposit', label: 'Deposit' },
+    { value: 'Bank transfer', label: 'Bank transfer' },
+    { value: 'Crypto', label: 'Crypto' },
+    { value: 'UPI', label: 'UPI' },
+    { value: 'Correction', label: 'Correction' },
+  ],
+  withdraw: [
+    { value: 'Withdrawal', label: 'Withdrawal' },
+    { value: 'Bank transfer', label: 'Bank transfer' },
+    { value: 'Crypto', label: 'Crypto' },
+    { value: 'Correction', label: 'Correction' },
+  ],
+  credit: [
+    { value: 'Bonus', label: 'Bonus' },
+    { value: 'Promotion', label: 'Promotion' },
+    { value: 'Goodwill', label: 'Goodwill' },
+    { value: 'Removed', label: 'Removed' },
+  ],
+}
+
 /** What each payment rail is called on screen. */
 const RAIL_WORD: Record<string, string> = {
   crypto: 'Crypto',
@@ -172,6 +202,10 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   /** The open dialog, if there is one. */
   const [ask, setAsk] = useState<{
     title: string
+    /** Who or what it acts on, under the title. */
+    subject?: string
+    /** One glyph, in the disc beside the title. */
+    icon?: string
     note?: string
     fields: readonly AskField[]
     submitLabel: string
@@ -569,14 +603,38 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
       icon,
       onPick: () =>
         setAsk({
-          title: `${label} \u2014 ${a.id}`,
+          title: label,
+          subject: `${a.id} \u2014 ${who}`,
+          icon: kind === 'credit' ? '\u25c8' : kind === 'withdraw' ? '\u2191' : '\u2193',
           note,
           fields: [
-            { key: 'amount', label: 'Amount', placeholder: '0.00', mode: 'decimal' as const },
+            {
+              key: 'amount',
+              label: 'Amount',
+              placeholder: '0.00',
+              mode: 'decimal' as const,
+              beside: true,
+            },
+            {
+              key: 'why',
+              label: 'Reason',
+              beside: true,
+              // Chosen, not typed. The journal's wire format is fixed-width
+              // \u2014 there is no variable-length string in it \u2014 so free text
+              // would be collected and then dropped, which is worse than
+              // not asking. A known set also counts, which prose never does.
+              choices: REASONS[kind] ?? [],
+            },
           ],
-          submitLabel: label,
+          submitLabel: 'Apply',
           ...(kind === 'withdraw' ? { tone: 'danger' as const } : {}),
-          run: ({ amount }) => {
+          run: ({ amount, why }) => {
+            if (
+              !window.confirm(
+                `${label} ${(amount ?? '').trim()} ${kind === 'withdraw' ? 'from' : 'to'} account ${a.id} \u2014 ${who}?\n\nReason: ${why}`,
+              )
+            )
+              return
             gw.adminAction(a.id, kind, (amount ?? '').trim())
             after()
           },
@@ -2209,6 +2267,8 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
       {ask ? (
         <Ask
           title={ask.title}
+          {...(ask.subject === undefined ? {} : { subject: ask.subject })}
+          {...(ask.icon === undefined ? {} : { icon: ask.icon })}
           {...(ask.note === undefined ? {} : { note: ask.note })}
           fields={ask.fields}
           submitLabel={ask.submitLabel}

@@ -302,3 +302,34 @@
     padding: 24px 20px 22px;
   }
 }
+
+/* The server picker, and the bead that says whether it is answering.
+
+   A terminal that serves several deployments has to ask which one before
+   it asks who you are: they are separate platforms with separate accounts,
+   and finding out afterwards is too late because the password has already
+   been sent somewhere. */
+
+.signin-pick {
+  appearance: none;
+  padding-right: 4px;
+  cursor: pointer;
+}
+
+.signin-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.signin-bead {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--loss);
+}
+
+.signin-bead.on {
+  background: #35d07f;
+  box-shadow: 0 0 0 2px rgb(53 208 127 / 22%);
+}
