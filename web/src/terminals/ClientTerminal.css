@@ -946,11 +946,15 @@
    in or out. Columns rather than one long list, so each block can be read
    without the others. */
 
+/* Columns that stop growing. Left to fill a wide window each block
+   stretches until its label is at one end of the screen and its figure
+   at the other, and a line nobody can read across is not a line. */
 .sum {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 16px;
-  padding: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 320px));
+  justify-content: start;
+  gap: 10px 28px;
+  padding: 10px 14px;
   align-content: start;
   overflow-y: auto;
 }
@@ -963,8 +967,8 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 3px 0;
-  font-size: 12px;
+  padding: 2px 0;
+  font-size: 11.5px;
   border-bottom: 1px solid var(--rule);
 }
 
