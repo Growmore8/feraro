@@ -77,6 +77,10 @@ struct StoredAccount {
     leverage: u32,
     balance: String,
     credit: String,
+    /// Absent in a snapshot written before insurance existed, which is
+    /// zero — because there was none.
+    #[serde(default)]
+    insurance: String,
     tradeable: bool,
     hedging: bool,
     live: bool,
@@ -137,6 +141,7 @@ fn kind_name(kind: AccountKind) -> &'static str {
         AccountKind::FxConversion => "fxConversion",
         AccountKind::IbCommission => "ibCommission",
         AccountKind::Adjustment => "adjustment",
+        AccountKind::Insurance => "insurance",
     }
 }
 
@@ -172,6 +177,7 @@ pub fn capture(portfolio: &Portfolio, ledger: &Ledger, through: Seq) -> Stored {
                 leverage: a.leverage,
                 balance: a.balance.to_decimal_string(),
                 credit: a.credit.to_decimal_string(),
+                insurance: a.insurance.to_decimal_string(),
                 tradeable: a.tradeable,
                 hedging: a.hedging,
                 live: a.live,
@@ -330,6 +336,7 @@ pub fn restore(stored: &Stored, settlement: Currency) -> Option<(Portfolio, Ledg
             leverage: a.leverage,
             balance: money(&a.balance)?,
             credit: money(&a.credit)?,
+            insurance: money(&a.insurance).unwrap_or(money::Money::ZERO),
             tradeable: a.tradeable,
             hedging: a.hedging,
             live: a.live,

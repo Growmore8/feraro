@@ -565,6 +565,13 @@ pub struct Account {
     pub balance: Money,
     /// Non-withdrawable bonus. Supports margin; see the `ledger` crate.
     pub credit: Money,
+    /// The trader's own money, set aside so it cannot be traded away.
+    ///
+    /// Deliberately *not* part of equity or free margin: the point of it
+    /// is that the market cannot reach it. It is still the client's — it
+    /// returns to the balance when released — but while it sits here no
+    /// position can be opened against it and no stop-out can consume it.
+    pub insurance: Money,
     /// False when the account is suspended or read-only.
     pub tradeable: bool,
     /// True when both sides of an instrument may be held at once.
@@ -601,6 +608,7 @@ impl Account {
             leverage,
             balance,
             credit: Money::ZERO,
+            insurance: Money::ZERO,
             tradeable: true,
             hedging: false,
             clock_started: Timestamp(0),
@@ -1571,6 +1579,7 @@ impl Portfolio {
                     leverage: a.leverage,
                     balance: a.balance,
                     credit: a.credit,
+                    insurance: a.insurance,
                     tradeable: a.tradeable,
                     hedging: a.hedging,
                     live: a.live,
@@ -1615,6 +1624,7 @@ impl Portfolio {
         for a in state.accounts {
             let mut account = Account::new(a.id, a.currency, a.leverage, a.balance);
             account.credit = a.credit;
+            account.insurance = a.insurance;
             account.tradeable = a.tradeable;
             account.hedging = a.hedging;
             account.live = a.live;
@@ -1690,6 +1700,25 @@ impl Portfolio {
                     .get_mut(&account)
                     .ok_or(RiskError::UnknownAccount(account))?;
                 a.balance = a.balance.sub(amount)?;
+            }
+            Event::InsuranceSet {
+                account, amount, ..
+            } => {
+                let before = self
+                    .accounts
+                    .get(&account)
+                    .map_or(Money::ZERO, |a| a.insurance);
+                let moved = amount.sub(before)?;
+                applied.insured = Some((account, moved));
+                let held = self
+                    .accounts
+                    .get_mut(&account)
+                    .ok_or(RiskError::UnknownAccount(account))?;
+                // Setting it aside takes it out of the balance; releasing
+                // it puts it back. Both pots are the client's, so the two
+                // moves are one transfer and nothing is created.
+                held.balance = held.balance.sub(moved)?;
+                held.insurance = amount;
             }
             Event::CreditSet {
                 account, amount, ..
@@ -1951,6 +1980,7 @@ pub struct AccountState {
     pub leverage: u32,
     pub balance: Money,
     pub credit: Money,
+    pub insurance: Money,
     pub tradeable: bool,
     pub hedging: bool,
     pub live: bool,
@@ -1988,6 +2018,9 @@ pub struct Applied {
     pub realised: Option<(AccountId, Realised)>,
     /// An account whose bonus changed, and the signed size of the change.
     pub credit_moved: Option<(AccountId, Money)>,
+    /// An account whose insurance changed, and by how much. Positive is
+    /// money moved out of the balance and set aside.
+    pub insured: Option<(AccountId, Money)>,
     /// An account adjusted to put a trade right, and by how much.
     pub adjusted: Option<(AccountId, Money)>,
 }

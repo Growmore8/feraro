@@ -31,16 +31,21 @@ replay. That is the cost of this architecture and it is paid deliberately.
       restore with a tested replay.
 - [x] **Alert sounds** — nine, synthesised.
 - [x] **Load tested** — eight traders, live prices, books still net to zero.
+- [x] **Commission per lot** — charged on opening and on closing, posted to
+      the house book. *(engine)*
+- [x] **Withdrawals** — saved payout methods, a request queue, desk approval,
+      and the three refusals that happen before it reaches the desk.
+- [x] **One queue for every money movement** — deposit, withdrawal, bonus in
+      and out, insurance in and out, all approved the same way.
+- [x] **Insurance** — the client's own money, set aside where the market
+      cannot reach it. Not bonus: it supports no margin. *(engine)*
+- [x] **Cubex's UI language** — cards, instrument marks, price pills,
+      segmented controls, in pearl rather than black.
 
 ## Next, in order
 
 Ordered by what a broker needs to operate, not by size.
 
-- [ ] **Commission per lot** *(engine)* — the second half of revenue. The
-      ledger already has the book; the fill needs to carry it and the fold
-      needs to post it.
-- [ ] **Withdrawals** — clients can pay in but cannot ask to take money out.
-      Saved withdrawal methods, a request queue, desk approval.
 - [ ] **Transfer between accounts** *(engine)* — one event carrying both
       legs, so a crash cannot leave half a transfer.
 - [ ] **Two-factor for desk logins** — TOTP. A login that can move money is

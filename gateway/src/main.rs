@@ -1286,12 +1286,38 @@ async fn settle(
             }
         }
         payments::Kind::InsuranceIn | payments::Kind::InsuranceOut => {
-            return Ok(ServerMessage::AdminResult {
-                done: false,
-                detail: format!(
-                    "Request {id} is marked approved, but this platform has no insurance pot yet, so nothing was moved. It is recorded; apply it by hand or wait for the feature."
-                ),
-            })
+            let now = snapshot_of(AccountId(request.account), commands)
+                .await
+                .and_then(|m| match m {
+                    ServerMessage::Snapshot { account, .. } => {
+                        money::Money::parse(&account.insurance).ok()
+                    }
+                    _ => None,
+                })
+                .unwrap_or(money::Money::ZERO);
+            let next = if request.kind == payments::Kind::InsuranceIn {
+                now.add(amount)
+            } else {
+                now.sub(amount)
+            };
+            match next {
+                Ok(v) if v >= money::Money::ZERO => AdminAction::SetInsurance(v),
+                Ok(_) => {
+                    return Ok(ServerMessage::AdminResult {
+                        done: false,
+                        detail: format!(
+                            "Request {id} is marked approved but {} is more insurance than account {} has set aside. Nothing was changed.",
+                            request.amount, request.account
+                        ),
+                    })
+                }
+                Err(_) => {
+                    return Ok(ServerMessage::AdminResult {
+                        done: false,
+                        detail: format!("Request {id} is marked approved but the figures would not add up. Nothing was changed."),
+                    })
+                }
+            }
         }
     };
 
@@ -2576,6 +2602,10 @@ fn describe(action: AdminAction, account: u64) -> String {
         AdminAction::SetCredit(m) => {
             format!("Bonus on {account} set to {}.", m.to_decimal_string())
         }
+        AdminAction::SetInsurance(m) => format!(
+            "Insurance on {account} set to {}. It is out of the balance and the market cannot reach it.",
+            m.to_decimal_string()
+        ),
         AdminAction::SetLive(true) => {
             format!("Account {account} is live. The money in it is the client's from now on.")
         }

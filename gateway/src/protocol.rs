@@ -380,6 +380,9 @@ pub struct AccountDto {
     pub leverage: u32,
     pub balance: String,
     pub credit: String,
+    /// The client's own money, set aside so the market cannot reach it.
+    /// Not part of equity or free margin — that is the point of it.
+    pub insurance: String,
     pub equity: String,
     pub used_margin: String,
     pub free_margin: String,

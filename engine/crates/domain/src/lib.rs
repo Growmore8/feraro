@@ -380,6 +380,26 @@ pub enum Event {
         /// Who set it.
         by: UserId,
     },
+    /// Money set aside on an account against losses.
+    ///
+    /// # Why this is not the bonus
+    ///
+    /// A bonus is the house's money lent to a trader: it counts toward
+    /// margin and may be taken back. Insurance is the trader's own, set
+    /// aside so it cannot be traded away — it does *not* count toward
+    /// margin, and nothing the market does can consume it.
+    ///
+    /// Absolute like [`Event::CreditSet`], and for the same reason: an
+    /// operator decides what the figure *is*, and a delta cannot be read
+    /// without knowing what it was applied to.
+    InsuranceSet {
+        /// Account whose insurance changed.
+        account: AccountId,
+        /// The insurance from now on.
+        amount: Money,
+        /// Who set it.
+        by: UserId,
+    },
     /// Trading on an account was stopped.
     ///
     /// Open positions stay open and keep being valued: suspension refuses new
@@ -839,6 +859,7 @@ impl Event {
             | Event::InstrumentListed { .. }
             | Event::AccountOwnerSet { .. }
             | Event::CreditSet { .. }
+            | Event::InsuranceSet { .. }
             | Event::AccountSuspended { .. }
             | Event::AccountReinstated { .. }
             | Event::OrderAccepted { .. }
@@ -877,6 +898,7 @@ impl Event {
             Event::FundsDeposited { .. } => 0x05,
             Event::FundsWithdrawn { .. } => 0x06,
             Event::CreditSet { .. } => 0x07,
+            Event::InsuranceSet { .. } => 0x50,
             Event::AccountSuspended { .. } => 0x08,
             Event::AccountReinstated { .. } => 0x09,
             Event::InstrumentListed { .. } => 0x10,
@@ -1251,6 +1273,11 @@ pub fn encode(record: &Record) -> Vec<u8> {
             by,
         }
         | Event::FundsWithdrawn {
+            account,
+            amount,
+            by,
+        }
+        | Event::InsuranceSet {
             account,
             amount,
             by,
@@ -1634,6 +1661,11 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             rate: r.price()?,
             markup: r.price()?,
             commission: Money::ZERO,
+        },
+        0x50 => Event::InsuranceSet {
+            account: AccountId(r.u64()?),
+            amount: r.money()?,
+            by: UserId(r.u64()?),
         },
         0x4F => Event::OrderFilled {
             order: OrderId(r.u64()?),

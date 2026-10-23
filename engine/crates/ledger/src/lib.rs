@@ -66,6 +66,13 @@ pub enum AccountKind {
     /// trading revenue cannot answer the one question that matters about
     /// them: how much, how often, and to whom.
     Adjustment,
+    /// A trader's own money, set aside so it cannot be traded away.
+    ///
+    /// Not [`AccountKind::Bonus`]: a bonus is the house's money lent out
+    /// and counts toward margin, while this is the client's own and does
+    /// not. Folding the two together would let a broker margin a client
+    /// against money the client had deliberately put beyond reach.
+    Insurance,
 }
 
 /// A ledger account: a party, a book and a currency.
@@ -391,6 +398,35 @@ pub fn close_position(
             Posting::new(
                 LedgerAccount::house(AccountKind::Swap, currency),
                 swap.neg()?,
+            ),
+        ],
+    })
+}
+
+/// Money moved between a trader's cash and their insurance.
+///
+/// Signed as the trader's cash sees it: negative is money leaving the
+/// balance to be set aside, positive is insurance released back. Both
+/// pots are the client's, so this never touches a house book — which is
+/// exactly why it is its own transaction rather than a deposit.
+pub fn insure(
+    id: TxId,
+    at: Timestamp,
+    who: AccountId,
+    currency: Currency,
+    to_cash: Money,
+) -> Result<Transaction, LedgerError> {
+    Ok(Transaction {
+        id,
+        at,
+        postings: vec![
+            Posting::new(
+                LedgerAccount::client(who, AccountKind::ClientCash, currency),
+                to_cash,
+            ),
+            Posting::new(
+                LedgerAccount::client(who, AccountKind::Insurance, currency),
+                to_cash.neg()?,
             ),
         ],
     })

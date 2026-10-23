@@ -280,6 +280,8 @@ pub enum AdminAction {
     Withdraw(money::Money),
     /// Set the non-withdrawable bonus to an amount.
     SetCredit(money::Money),
+    /// Set aside, or release, money the market cannot reach.
+    SetInsurance(money::Money),
     /// Hold both sides of an instrument at once, or net them off.
     SetHedging(bool),
     /// Make the account live, or put it back to demo.
@@ -577,6 +579,19 @@ fn post_to_books(
             currency_of(account),
             amount,
         )),
+        // Both pots are the client's, so this is a transfer rather than
+        // money arriving: nothing is created and no house book moves.
+        Event::InsuranceSet { account, .. } => match applied.insured {
+            Some((_, moved)) if moved.is_zero() => None,
+            Some((_, moved)) => Some(ledger::insure(
+                id,
+                record.at,
+                account,
+                currency_of(account),
+                moved.neg()?,
+            )?),
+            None => None,
+        },
         Event::CreditSet { account, .. } => match applied.credit_moved {
             // A bonus set to what it already was moves nothing, and a
             // transaction with two zero legs is noise in the books.
@@ -2500,6 +2515,30 @@ impl Engine {
                     by,
                 }
             }
+            AdminAction::SetInsurance(amount) => {
+                if amount.is_negative() {
+                    return Ok(AdminOutcome::Refused("insurance cannot be negative"));
+                }
+                // It comes out of the balance, so there has to be one. A
+                // client cannot set aside money they do not have, and
+                // letting them would be an overdraft by another name.
+                let held = self.portfolio.account(account);
+                let moving = held
+                    .map(|a| amount.sub(a.insurance))
+                    .transpose()
+                    .unwrap_or(None)
+                    .unwrap_or(money::Money::ZERO);
+                if held.is_some_and(|a| moving > a.balance) {
+                    return Ok(AdminOutcome::Refused(
+                        "there is not that much in the balance to set aside",
+                    ));
+                }
+                Event::InsuranceSet {
+                    account,
+                    amount,
+                    by,
+                }
+            }
             AdminAction::SetHedging(hedging) => {
                 // Only on a flat account. Changing the mode under an open
                 // position would change what closing it means halfway
@@ -2818,6 +2857,7 @@ impl Engine {
             leverage: account.leverage,
             balance: money_str(account.balance),
             credit: money_str(account.credit),
+            insurance: money_str(account.insurance),
             equity: money_str(account.equity(market)?),
             used_margin: money_str(account.used_margin(market, self.policy)?),
             free_margin: money_str(account.free_margin(market, self.policy)?),
@@ -5278,6 +5318,93 @@ mod tests {
 
         let (again, _rx) = engine(&s.0);
         assert_eq!(balance_of(&again, TRADER), after, "replay charged it once");
+        books_agree(&again);
+    }
+
+    #[test]
+    fn insurance_comes_out_of_the_balance_and_goes_back() {
+        let s = Scratch::new("insurance");
+        let (mut e, _rx) = engine(&s.0);
+        let before = balance_of(&e, TRADER);
+
+        administer(&mut e, TRADER, AdminAction::SetInsurance(m("1000.00")));
+        let after = balance_of(&e, TRADER);
+        let moved = money::Money::parse(&before)
+            .unwrap()
+            .sub(money::Money::parse(&after).unwrap())
+            .unwrap();
+        assert_eq!(moved.to_display_string(2).unwrap(), "1000.00");
+        assert_eq!(e.portfolio.account(TRADER).unwrap().insurance, m("1000.00"));
+        books_agree(&e);
+
+        // Releasing it puts it back. Nothing was created or destroyed:
+        // both pots are the client's.
+        administer(
+            &mut e,
+            TRADER,
+            AdminAction::SetInsurance(money::Money::ZERO),
+        );
+        assert_eq!(balance_of(&e, TRADER), before);
+        books_agree(&e);
+    }
+
+    #[test]
+    fn money_cannot_be_set_aside_that_is_not_there() {
+        // An overdraft by another name.
+        let s = Scratch::new("insurance-over");
+        let (mut e, _rx) = engine(&s.0);
+        let before = balance_of(&e, TRADER);
+
+        let outcome = administer(&mut e, TRADER, AdminAction::SetInsurance(m("999999.00")));
+        assert!(matches!(outcome, AdminOutcome::Refused(_)), "{outcome:?}");
+        assert_eq!(balance_of(&e, TRADER), before, "nothing moved");
+    }
+
+    #[test]
+    fn insurance_is_out_of_the_markets_reach() {
+        // The whole point of the pot: it does not support margin, so
+        // setting money aside *reduces* what can be traded.
+        let s = Scratch::new("insurance-margin");
+        let (mut e, _rx) = engine(&s.0);
+        let free_before = e
+            .portfolio
+            .account(TRADER)
+            .unwrap()
+            .free_margin(&e.portfolio.market, e.policy)
+            .unwrap();
+
+        administer(&mut e, TRADER, AdminAction::SetInsurance(m("1000.00")));
+        let free_after = e
+            .portfolio
+            .account(TRADER)
+            .unwrap()
+            .free_margin(&e.portfolio.market, e.policy)
+            .unwrap();
+
+        let fell = free_before.sub(free_after).unwrap();
+        assert_eq!(
+            fell.to_display_string(2).unwrap(),
+            "1000.00",
+            "money set aside must not still be tradeable"
+        );
+    }
+
+    #[test]
+    fn insurance_survives_a_restart() {
+        let s = Scratch::new("insurance-replay");
+        let (held, balance) = {
+            let (mut e, _rx) = engine(&s.0);
+            administer(&mut e, TRADER, AdminAction::SetInsurance(m("750.00")));
+            let now = e.last_sync + Duration::from_secs(1);
+            e.commit_at(now).unwrap();
+            (
+                e.portfolio.account(TRADER).unwrap().insurance,
+                balance_of(&e, TRADER),
+            )
+        };
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(again.portfolio.account(TRADER).unwrap().insurance, held);
+        assert_eq!(balance_of(&again, TRADER), balance);
         books_agree(&again);
     }
 
