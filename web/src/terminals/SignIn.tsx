@@ -15,6 +15,18 @@
  *
  * The password never touches state that outlives the attempt, and the form is
  * a real `<form>` so a password manager recognises it and Enter submits.
+ *
+ * # The code field
+ *
+ * A login with an authenticator takes two round trips: the password goes,
+ * the gateway says a code is wanted, and the whole lot goes again. The field
+ * appears only when the gateway asks for it, because a sign-in screen that
+ * asks everybody for a code asks the clients too, and they have none.
+ *
+ * The password is held for that second attempt and only that — it is sent
+ * again because the gateway keeps nothing in between, and a
+ * half-authenticated session waiting on a server is one somebody else can
+ * finish.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -32,7 +44,14 @@ export interface SignInProps {
   readonly detail?: string | undefined
   /** Why the last attempt failed, if it did. */
   readonly error: string | null
-  onSignIn(login: string, password: string): void
+  onSignIn(login: string, password: string, code: string): void
+  /**
+   * True when the gateway has asked for an authenticator code.
+   *
+   * It says so rather than the screen guessing: a terminal cannot know
+   * which logins have a second factor without being told.
+   */
+  readonly codeWanted?: boolean | undefined
   /** Flips the palette. This page is often the first thing anybody sees. */
   onTheme?: (() => void) | undefined
   /**
@@ -55,6 +74,7 @@ export function SignIn({
   detail,
   error,
   onSignIn,
+  codeWanted = false,
   onTheme,
   servers = [],
   server,
@@ -62,26 +82,50 @@ export function SignIn({
 }: SignInProps) {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [reveal, setReveal] = useState(false)
   const loginRef = useRef<HTMLInputElement>(null)
+  const codeRef = useRef<HTMLInputElement>(null)
 
-  // The cursor belongs in the first field, and back there after a refusal.
+  // The cursor belongs in the first field, and back there after a refusal —
+  // except when a code has been asked for, which is the field that is
+  // actually wanted next.
   useEffect(() => {
-    if (auth === 'required') loginRef.current?.focus()
-  }, [auth, error])
+    if (auth !== 'required') return
+    if (codeWanted) codeRef.current?.focus()
+    else loginRef.current?.focus()
+  }, [auth, error, codeWanted])
+
+  // A code arrives six digits at a time and there is nothing else to do
+  // with it, so it submits itself rather than waiting for a button nobody
+  // looks at while reading a phone.
+  useEffect(() => {
+    if (!codeWanted || code.length !== 6 || password === '') return
+    onSignIn(login.trim(), password, code)
+    setCode('')
+  }, [code, codeWanted, login, password, onSignIn])
 
   const reachable = status === 'live'
   const busy = auth === 'signingIn'
-  const ready = reachable && !busy && login.trim() !== '' && password !== ''
+  const ready =
+    reachable &&
+    !busy &&
+    login.trim() !== '' &&
+    password !== '' &&
+    (!codeWanted || code.length === 6)
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!ready) return
-    onSignIn(login.trim(), password)
-    // Nothing is kept: a retry is typed again rather than resent from a field
-    // nobody can see.
-    setPassword('')
-    setReveal(false)
+    onSignIn(login.trim(), password, code)
+    setCode('')
+    // The password is kept only while a code is being asked for, because
+    // the second attempt has to carry it. Otherwise nothing is kept: a
+    // retry is typed again rather than resent from a field nobody sees.
+    if (!codeWanted) {
+      setPassword('')
+      setReveal(false)
+    }
   }
 
   return (
@@ -205,6 +249,28 @@ export function SignIn({
             </span>
           </label>
 
+          {codeWanted ? (
+            <label className="signin-field">
+              <span className="signin-label">Authenticator code</span>
+              <span className="signin-wrap">
+                <ShieldIcon />
+                <input
+                  ref={codeRef}
+                  className="signin-input signin-code mono"
+                  value={code}
+                  onChange={(e) =>
+                    setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  placeholder="000000"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  spellCheck={false}
+                  disabled={busy}
+                />
+              </span>
+            </label>
+          ) : null}
+
           {error ? (
             <p className="signin-error" role="alert">
               {error}
@@ -219,7 +285,7 @@ export function SignIn({
           ) : null}
 
           <button type="submit" className="signin-go" disabled={!ready}>
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? 'Signing in…' : codeWanted ? 'Confirm' : 'Sign in'}
           </button>
 
           <p className="signin-note">

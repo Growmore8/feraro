@@ -70,6 +70,7 @@ import type { Resting } from '../components/DealTicket'
 import { LevelCell } from '../components/LevelCell'
 import { MarketWatch } from '../components/MarketWatch'
 import { PricingSheet } from '../components/PricingSheet'
+import { SecondFactor } from '../components/SecondFactor'
 import { RequestQueue } from '../components/RequestQueue'
 import { Sheet } from '../components/Sheet'
 import { useChimes } from '../feed/useChimes'
@@ -247,7 +248,9 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   }, [gw.activity])
 
   /** A read-only panel, when one has been opened from a menu. */
-  const [sheet, setSheet] = useState<'books' | 'payments' | 'pricing' | null>(null)
+  const [sheet, setSheet] = useState<
+    'books' | 'payments' | 'pricing' | 'second' | null
+  >(null)
 
   /**
    * Tickets ticked in the blotter.
@@ -1284,6 +1287,12 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
       )
     }
     items.push(
+      {
+        label: 'Two-factor' + DOTS,
+        icon: gw.session?.secondFactor ? '\u25c9' : '\u25cb',
+        hint: gw.session?.secondFactor ? 'on' : 'off',
+        onPick: () => setSheet('second'),
+      },
       { label: 'Refresh the book', onPick: () => gw.adminOverview() },
       '-',
       ...PANES.map(([pane, label]) => ({
@@ -2221,9 +2230,24 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
               </button>
             ))}
             <div className="grow" />
-            <span className="mgr-hint dim">
-              Right-click an account, a position or the background.
-            </span>
+            {/* Said every time, until it is dealt with. This login can take
+                money out of a client's account on a password alone, and a
+                warning somebody has to go looking for is a warning nobody
+                reads. */}
+            {gw.session?.secondFactorWanted ? (
+              <button
+                type="button"
+                className="mgr-nag"
+                onClick={() => setSheet('second')}
+                title="Set up an authenticator on this login"
+              >
+                This login has only a password — set up two-factor
+              </button>
+            ) : (
+              <span className="mgr-hint dim">
+                Right-click an account, a position or the background.
+              </span>
+            )}
           </div>
 
         </section>
@@ -2246,6 +2270,22 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           onClose={() => setSheet(null)}
         >
           <PaymentMethods gw={gw} />
+        </Sheet>
+      ) : null}
+
+      {sheet === 'second' ? (
+        <Sheet
+          title="Two-factor"
+          note="A second thing somebody has to have, as well as the password. This login can move money out of a client's account, which is why it is offered here and not to clients."
+          onClose={() => setSheet(null)}
+        >
+          <SecondFactor
+            on={gw.session?.secondFactor ?? false}
+            secret={gw.secondFactorSecret}
+            onBegin={() => gw.beginSecondFactor()}
+            onConfirm={(code) => gw.confirmSecondFactor(code)}
+            onStop={(code) => gw.stopSecondFactor(code)}
+          />
         </Sheet>
       ) : null}
 

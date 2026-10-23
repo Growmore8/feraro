@@ -242,7 +242,27 @@ pub enum ClientMessage {
     AdminOpenAccount { user: u64, live: bool },
     /// Sign in with a password.
     #[serde(rename_all = "camelCase")]
-    Login { login: String, password: String },
+    Login {
+        login: String,
+        password: String,
+        /// The authenticator code, when this login has one.
+        ///
+        /// Empty on the first attempt. A login that needs one is answered
+        /// with `codeRequired`, and the terminal asks and sends the whole
+        /// lot again — the password included, because the gateway keeps
+        /// nothing between the two attempts. A half-authenticated session
+        /// waiting on a server is a session somebody can finish.
+        #[serde(default)]
+        code: String,
+    },
+    /// Start setting up an authenticator on the signed-in login.
+    BeginSecondFactor,
+    /// Finish setting one up, by proving a code from it works.
+    #[serde(rename_all = "camelCase")]
+    ConfirmSecondFactor { code: String },
+    /// Turn one off. Needs a current code from it.
+    #[serde(rename_all = "camelCase")]
+    StopSecondFactor { code: String },
     /// Sign in with a token from an earlier `Login` on this gateway.
     #[serde(rename_all = "camelCase")]
     Resume { token: String },
@@ -737,6 +757,14 @@ pub enum ServerMessage {
         accounts: Vec<AccountSummaryDto>,
         /// The one it is acting on now. A `snapshot` for it follows.
         account: u64,
+        /// True when this login has a working authenticator.
+        second_factor: bool,
+        /// True when this login can move money and has no authenticator.
+        ///
+        /// The terminal says so, every time, until it is dealt with. A
+        /// desk login is the one that can take money out of a client's
+        /// account, and a password is a single thing somebody can take.
+        second_factor_wanted: bool,
     },
     /// The credentials or token were not accepted.
     ///
@@ -792,6 +820,24 @@ pub enum ServerMessage {
         /// Logins the administrator can act on, for the new-client form and
         /// for showing who owns what.
         users: Vec<AdminUserDto>,
+    },
+    /// A fresh authenticator secret, shown exactly once.
+    ///
+    /// # Why it is not shown again
+    ///
+    /// After this frame the platform holds only what it needs to check
+    /// codes. Being able to re-display the secret would mean any session on
+    /// this login could read the second factor out, which would make it a
+    /// second copy of the first one. Somebody who loses the phone enrols
+    /// again; they do not recover it.
+    #[serde(rename_all = "camelCase")]
+    SecondFactorSecret {
+        /// Base32, flat, for pasting.
+        secret: String,
+        /// The same in groups of four, for reading off a screen.
+        grouped: String,
+        /// The `otpauth:` URI, for a QR code.
+        uri: String,
     },
     /// The ways money may be paid in.
     #[serde(rename_all = "camelCase")]

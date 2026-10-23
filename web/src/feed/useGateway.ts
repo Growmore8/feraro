@@ -34,7 +34,7 @@ export interface GatewayView extends GatewayState {
   cancelOrder(ticket: number): void
   setProtection(ticket: number, stopLoss: Price | null, takeProfit: Price | null): void
   acknowledge(index: number): void
-  signIn(login: string, password: string): void
+  signIn(login: string, password: string, code?: string): void
   selectAccount(account: number): void
   signOut(): void
   adminOverview(): void
@@ -64,6 +64,9 @@ export interface GatewayView extends GatewayState {
   adminRaise(kind: MoneyKind, account: number, amount: string, note: string): void
   requestWithdrawal(payout: number, amount: string, note: string): void
   transfer(to: number, amount: string): void
+  beginSecondFactor(): void
+  confirmSecondFactor(code: string): void
+  stopSecondFactor(code: string): void
   payoutMethods(): void
   savePayoutMethod(m: {
     id: number | null
@@ -143,6 +146,8 @@ const EMPTY: GatewayState = {
   methods: [],
   myDeposits: [],
   deposits: [],
+  codeWanted: false,
+  secondFactorSecret: null,
   payouts: [],
   pricing: [],
   adminResult: null,
@@ -218,8 +223,11 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     setEvents((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
-  const signIn = useCallback((login: string, password: string) => {
-    clientRef.current?.login(login, password)
+  const signIn = useCallback((login: string, password: string, code = '') => {
+    clientRef.current?.login(login, password, code)
+    // `codeWanted` is left alone: a login that has been asked for a code is
+    // still being asked for one while the second attempt is in flight, and
+    // clearing it would make the field vanish under the person typing.
     setState((prev) => ({ ...prev, auth: 'signingIn', authError: null }))
   }, [])
 
@@ -323,6 +331,18 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
 
   const transfer = useCallback((to: number, amount: string) => {
     clientRef.current?.transfer(to, amount)
+  }, [])
+
+  const beginSecondFactor = useCallback(() => {
+    clientRef.current?.beginSecondFactor()
+  }, [])
+
+  const confirmSecondFactor = useCallback((code: string) => {
+    clientRef.current?.confirmSecondFactor(code)
+  }, [])
+
+  const stopSecondFactor = useCallback((code: string) => {
+    clientRef.current?.stopSecondFactor(code)
   }, [])
 
   const requestWithdrawal = useCallback(
@@ -443,6 +463,9 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminRaise,
       requestWithdrawal,
       transfer,
+      beginSecondFactor,
+      confirmSecondFactor,
+      stopSecondFactor,
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,
@@ -487,6 +510,9 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminRaise,
       requestWithdrawal,
       transfer,
+      beginSecondFactor,
+      confirmSecondFactor,
+      stopSecondFactor,
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,

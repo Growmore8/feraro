@@ -333,3 +333,16 @@
   background: #35d07f;
   box-shadow: 0 0 0 2px rgb(53 208 127 / 22%);
 }
+
+
+/* The authenticator code.
+
+   Wider tracking and a larger size than the other fields: six digits read
+   off a phone and typed back is the one input on this page where a
+   mistyped character is invisible without it. */
+
+.signin-code {
+  font-size: 18px;
+  letter-spacing: 0.3em;
+  text-align: center;
+}

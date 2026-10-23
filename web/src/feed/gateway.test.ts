@@ -487,6 +487,92 @@ describe('the books', () => {
 })
 
 
+describe('two-factor', () => {
+  it('reads whether the login has one, and whether it ought to', () => {
+    const frame = JSON.stringify({
+      type: 'welcome',
+      token: 'abc',
+      user: 1,
+      login: 'desk@feraro.local',
+      role: 'admin',
+      accounts: [],
+      account: 1001,
+      secondFactor: false,
+      secondFactorWanted: true,
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.session!.secondFactor).toBe(false)
+    // The terminal nags on this, every time, until it is dealt with.
+    expect(patch.session!.secondFactorWanted).toBe(true)
+  })
+
+  it('reads an older welcome frame as a login with none, and no nag', () => {
+    // A gateway from before two-factor existed. Reading the absent field as
+    // "wanted" would put a warning on every desk screen that nothing could
+    // clear, because that gateway has nothing to enrol with.
+    const frame = JSON.stringify({
+      type: 'welcome',
+      token: 'abc',
+      user: 1,
+      login: 'desk@feraro.local',
+      role: 'admin',
+      accounts: [],
+      account: 1001,
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.session!.secondFactor).toBe(false)
+    expect(patch.session!.secondFactorWanted).toBe(false)
+  })
+
+  it('asks for a code only when the gateway says to', () => {
+    // The password was right. A sign-in screen that asked everybody for a
+    // code would ask the clients, who have none.
+    const wanted = handleFrame(
+      JSON.stringify({ type: 'authFailed', reason: 'codeRequired' }),
+      0,
+      NO_QUOTES,
+    )
+    expect(wanted.patch.codeWanted).toBe(true)
+    expect(wanted.patch.authError).toMatch(/authenticator/i)
+
+    // A code that was not accepted keeps the field, because the next one
+    // will be typed into it.
+    const refused = handleFrame(
+      JSON.stringify({ type: 'authFailed', reason: 'codeRefused' }),
+      0,
+      NO_QUOTES,
+    )
+    expect(refused.patch.codeWanted).toBe(true)
+    // Not "wrong code": it may have been right and already used, and
+    // somebody who reads "wrong" retypes the same one.
+    expect(refused.patch.authError).not.toMatch(/wrong/i)
+
+    // An ordinary refusal does not. Which half was wrong is not the
+    // trader's business and not an attacker's to learn.
+    const plain = handleFrame(
+      JSON.stringify({ type: 'authFailed', reason: 'refused' }),
+      0,
+      NO_QUOTES,
+    )
+    expect(plain.patch.codeWanted).toBe(false)
+  })
+
+  it('carries a fresh secret in three forms, because each is read differently', () => {
+    const frame = JSON.stringify({
+      type: 'secondFactorSecret',
+      secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ',
+      grouped: 'GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ',
+      uri: 'otpauth://totp/Feraro:desk%40feraro.local?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Feraro&algorithm=SHA1&digits=6&period=30',
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    // Flat to paste, grouped to read off a screen, and a URI that opens an
+    // app on a phone.
+    expect(patch.secondFactorSecret!.secret).toHaveLength(32)
+    expect(patch.secondFactorSecret!.grouped).toContain(' ')
+    expect(patch.secondFactorSecret!.uri).toMatch(/^otpauth:\/\/totp\//)
+  })
+})
+
 describe('the money queue', () => {
   it('reads every kind of movement, and which pot each touches', () => {
     const frame = JSON.stringify({

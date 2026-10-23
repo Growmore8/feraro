@@ -151,6 +151,16 @@ export interface GatewaySession {
   readonly accounts: readonly GatewayAccountSummary[]
   /** The account every command is acting on. */
   readonly account: number
+  /** True when this login has a working authenticator. */
+  readonly secondFactor: boolean
+  /**
+   * True when this login can move money and has no authenticator.
+   *
+   * The terminal says so until it is dealt with. A desk login is the one
+   * that can take money out of a client's account, and a password is a
+   * single thing somebody can take.
+   */
+  readonly secondFactorWanted: boolean
 }
 
 /** One account as the administrator's book shows it. */
@@ -436,6 +446,20 @@ export interface GatewayState {
   readonly methods: readonly PaymentMethod[]
   /** This client's own deposit claims, newest first. */
   readonly myDeposits: readonly DepositRequest[]
+  /**
+   * True when the sign-in screen should ask for an authenticator code.
+   *
+   * Set by the gateway rather than guessed: a terminal cannot know which
+   * logins have a second factor without being told, and asking everybody
+   * would ask the clients too.
+   */
+  readonly codeWanted: boolean
+  /** The secret from a fresh enrolment, which is shown exactly once. */
+  readonly secondFactorSecret: {
+    readonly secret: string
+    readonly grouped: string
+    readonly uri: string
+  } | null
   /** The desk's queue of requests to decide. */
   readonly deposits: readonly DepositRequest[]
   /** Where this client's money may be sent. */
@@ -544,6 +568,12 @@ function authMessage(reason: string, retryInSeconds: number | null): string {
       // Deliberately not "no such user": which half was wrong is not the
       // trader's business to be told, and not an attacker's to learn.
       return 'That login and password do not match.'
+    case 'codeRequired':
+      return 'This login needs a code from your authenticator.'
+    case 'codeRefused':
+      // Not "wrong code": it may have been right and already used, and a
+      // person who reads "wrong" will retype the same one.
+      return 'That code was not accepted. Wait for the next one and try again.'
     case 'tooManyAttempts':
       return retryInSeconds === null
         ? 'Too many attempts. Try again shortly.'
@@ -732,6 +762,8 @@ export function handleFrame(
             role,
             accounts,
             account: Number(frame['account']),
+            secondFactor: frame['secondFactor'] === true,
+            secondFactorWanted: frame['secondFactorWanted'] === true,
           },
         },
       }
@@ -747,12 +779,17 @@ export function handleFrame(
 
     case 'authFailed': {
       const retry = frame['retryInSeconds']
+      const reason = String(frame['reason'])
       return {
         patch: {
           auth: 'required',
           session: null,
+          // The password was right and a code is wanted. Held apart from
+          // the message so the sign-in screen can grow a field rather than
+          // asking everybody for a code they have not got.
+          codeWanted: reason === 'codeRequired' || reason === 'codeRefused',
           authError: authMessage(
-            String(frame['reason']),
+            reason,
             retry === null || retry === undefined ? null : Number(retry),
           ),
         },
@@ -781,6 +818,17 @@ export function handleFrame(
         : []
       return { patch: { deposits: requests } }
     }
+
+    case 'secondFactorSecret':
+      return {
+        patch: {
+          secondFactorSecret: {
+            secret: String(frame['secret'] ?? ''),
+            grouped: String(frame['grouped'] ?? ''),
+            uri: String(frame['uri'] ?? ''),
+          },
+        },
+      }
 
     case 'payoutMethods': {
       const payouts = Array.isArray(frame['payouts'])
@@ -1170,9 +1218,15 @@ export class GatewayClient {
     private readonly handlers: GatewayHandlers,
   ) {}
 
-  /** Signs in with a password. */
-  login(login: string, password: string): void {
-    this.send({ type: 'login', login, password })
+  /**
+   * Signs in with a password, and a code when the login has one.
+   *
+   * The password goes again with the code, because the gateway keeps
+   * nothing between the two attempts: a half-authenticated session waiting
+   * on a server is a session somebody else can finish.
+   */
+  login(login: string, password: string, code = ''): void {
+    this.send({ type: 'login', login, password, code })
   }
 
   /** Signs in with a token from an earlier session on this gateway. */
@@ -1302,6 +1356,21 @@ export class GatewayClient {
 
   forgetPayoutMethod(id: number): void {
     this.send({ type: 'forgetPayoutMethod', id })
+  }
+
+  /** Starts setting up an authenticator. The secret comes back once. */
+  beginSecondFactor(): void {
+    this.send({ type: 'beginSecondFactor' })
+  }
+
+  /** Finishes setting one up by proving a code from it works. */
+  confirmSecondFactor(code: string): void {
+    this.send({ type: 'confirmSecondFactor', code })
+  }
+
+  /** Turns one off, which needs a current code from it. */
+  stopSecondFactor(code: string): void {
+    this.send({ type: 'stopSecondFactor', code })
   }
 
   /** What the house charges, per instrument. */

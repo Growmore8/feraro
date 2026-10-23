@@ -102,6 +102,7 @@ export default function App() {
         detail={gw.detail}
         error={gw.authError}
         onSignIn={gw.signIn}
+        codeWanted={gw.codeWanted}
         onTheme={flip}
         servers={servers}
         server={chosen}

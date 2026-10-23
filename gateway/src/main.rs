@@ -21,6 +21,7 @@ mod markups;
 mod payments;
 mod protocol;
 mod snapshot;
+mod totp;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -61,6 +62,13 @@ const STATEMENT_PAGE: usize = 200;
 /// moment it starts is one plain `ws://` away from the internet. A
 /// deployment sets this to `0.0.0.0:8081` and puts TLS in front of it.
 const BIND: &str = "127.0.0.1:8081";
+
+/// What an authenticator app calls this platform.
+///
+/// It appears in the app's list beside the login, so it has to say which
+/// platform a code belongs to. A deployment running several brands from one
+/// server would want this per server; until then it is the project's name.
+const ISSUER: &str = "Feraro";
 
 /// Where the health endpoint listens. Same reasoning, and never public.
 const HEALTH_BIND: &str = "127.0.0.1:8082";
@@ -473,6 +481,17 @@ async fn ask_health(at: &str) -> Result<bool> {
 /// Only the health endpoint uses this. Trade time comes from the engine,
 /// which journals the value it read so a replay never asks the clock again;
 /// this is a liveness reading and belongs to nothing.
+/// Seconds since the epoch, for the one thing that needs wall-clock time.
+///
+/// A one-time password is a function of the time on two clocks that have
+/// never met, so this is the real one rather than a monotonic reading.
+fn unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -673,8 +692,12 @@ async fn session(
                 };
 
                 match client {
-                    ClientMessage::Login { login, password } => {
-                        match sign_in(&gate, &login, &password, &commands).await? {
+                    ClientMessage::Login {
+                        login,
+                        password,
+                        code,
+                    } => {
+                        match sign_in(&gate, &login, &password, &code, &commands).await? {
                             Ok(session) => {
                                 note_session(
                                     &commands,
@@ -1026,6 +1049,72 @@ async fn session(
                                 let reply = administer(&gate, session, admin_message, &commands).await?;
                                 send(&mut sink, &reply).await?;
                             }
+                            ClientMessage::BeginSecondFactor => {
+                                let made = gate
+                                    .users
+                                    .lock()
+                                    .expect("the user store lock")
+                                    .begin_second_factor(session.user);
+                                let reply = match made {
+                                    Ok(totp) => ServerMessage::SecondFactorSecret {
+                                        secret: totp.to_base32(),
+                                        grouped: totp.to_grouped(),
+                                        uri: totp.uri(ISSUER, &session.login),
+                                    },
+                                    Err(why) => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: format!("Refused: {why}"),
+                                    },
+                                };
+                                send(&mut sink, &reply).await?;
+                            }
+                            ClientMessage::ConfirmSecondFactor { code } => {
+                                let done = gate
+                                    .users
+                                    .lock()
+                                    .expect("the user store lock")
+                                    .confirm_second_factor(
+                                        session.user,
+                                        &code,
+                                        unix_seconds(),
+                                    );
+                                let reply = match done {
+                                    Ok(()) => ServerMessage::AdminResult {
+                                        done: true,
+                                        detail: "Two-factor is on. You will be asked for a code every time you sign in — including from this browser.".to_owned(),
+                                    },
+                                    Err(why) => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: format!("Refused: {why}"),
+                                    },
+                                };
+                                send(&mut sink, &reply).await?;
+                                // The nag in the welcome frame is now wrong
+                                // one way or the other, so it is resent.
+                                let welcome = welcome_for(session, &gate, &commands).await?;
+                                send(&mut sink, &welcome).await?;
+                            }
+                            ClientMessage::StopSecondFactor { code } => {
+                                let done = gate
+                                    .users
+                                    .lock()
+                                    .expect("the user store lock")
+                                    .stop_second_factor(session.user, &code, unix_seconds());
+                                let reply = match done {
+                                    Ok(()) => ServerMessage::AdminResult {
+                                        done: true,
+                                        detail: "Two-factor is off. This login is back to a password alone."
+                                            .to_owned(),
+                                    },
+                                    Err(why) => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: format!("Refused: {why}"),
+                                    },
+                                };
+                                send(&mut sink, &reply).await?;
+                                let welcome = welcome_for(session, &gate, &commands).await?;
+                                send(&mut sink, &welcome).await?;
+                            }
                             ClientMessage::Transfer { to, amount } => {
                                 let reply =
                                     transfer(session, &commands, to, &amount).await?;
@@ -1110,14 +1199,23 @@ async fn sign_in(
     gate: &Gate,
     login: &str,
     password: &str,
+    code: &str,
     commands: &mpsc::Sender<Command>,
 ) -> Result<std::result::Result<Signed, ServerMessage>> {
     let users = gate.users.clone();
     let login_owned = login.to_owned();
     let password_owned = password.to_owned();
+    let code_owned = code.to_owned();
+    let seconds = unix_seconds();
     let outcome = tokio::task::spawn_blocking(move || {
         let mut users = users.lock().expect("the user store lock");
-        users.sign_in(&login_owned, &password_owned, Instant::now())
+        users.sign_in(
+            &login_owned,
+            &password_owned,
+            &code_owned,
+            seconds,
+            Instant::now(),
+        )
     })
     .await
     .context("verifying a password")?;
@@ -1127,6 +1225,22 @@ async fn sign_in(
         auth::SignIn::Refused => {
             return Ok(Err(ServerMessage::AuthFailed {
                 reason: "refused",
+                retry_in_seconds: None,
+            }))
+        }
+        // The password was right; the terminal asks for the code and sends
+        // the whole lot again. Told apart from a refusal on purpose: the
+        // alternative is a sign-in screen that asks everybody for a code,
+        // including the clients who have none.
+        auth::SignIn::CodeRequired => {
+            return Ok(Err(ServerMessage::AuthFailed {
+                reason: "codeRequired",
+                retry_in_seconds: None,
+            }))
+        }
+        auth::SignIn::CodeRefused(_) => {
+            return Ok(Err(ServerMessage::AuthFailed {
+                reason: "codeRefused",
                 retry_in_seconds: None,
             }))
         }
@@ -1811,6 +1925,16 @@ async fn welcome_for(
     commands: &mpsc::Sender<Command>,
 ) -> Result<ServerMessage> {
     let accounts = accounts_for(session, gate, commands).await?;
+    let (has_second, wants_second) = {
+        let users = gate.users.lock().expect("the user store lock");
+        match users.by_id(session.user) {
+            Some(u) => (
+                u.has_second_factor(),
+                u.should_have_second_factor() && !u.has_second_factor(),
+            ),
+            None => (false, false),
+        }
+    };
     Ok(ServerMessage::Welcome {
         token: session.token.clone(),
         user: session.user.0,
@@ -1818,6 +1942,8 @@ async fn welcome_for(
         role: session.role.as_str(),
         accounts,
         account: session.selected.0,
+        second_factor: has_second,
+        second_factor_wanted: wants_second,
     })
 }
 

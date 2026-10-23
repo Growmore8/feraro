@@ -1192,3 +1192,23 @@
 .mgr-bulk {
   background: var(--panel);
 }
+
+
+/* The standing warning that a desk login has only a password.
+
+   It replaces the right-click hint rather than sitting beside it: the hint
+   is a nicety and this is not, and two things competing in the same corner
+   means neither is read. */
+
+.mgr-nag {
+  padding: 3px 11px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--warn);
+  background: var(--accent-wash);
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mgr-nag:hover { color: var(--accent-ink); background: var(--warn); }

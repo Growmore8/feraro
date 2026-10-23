@@ -1671,3 +1671,120 @@
 .mv-sent { flex: 1 1 100%; margin: 0; font-size: 11.5px; color: var(--profit); }
 
 .mv-says { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+
+
+/* ── The second factor ──
+
+   A plain column. The secret is the one thing on this surface that must be
+   read correctly off a screen, so it is the only thing on it set large and
+   selectable. */
+
+.sf { display: flex; flex-direction: column; gap: 12px; max-width: 460px; }
+
+.sf-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--ground);
+  border-radius: 7px;
+}
+
+.sf-good { color: var(--profit); }
+
+.sf-warn { color: var(--warn); background: var(--accent-wash); }
+
+.sf-tick,
+.sf-bang {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+.sf-tick { color: var(--profit); }
+
+.sf-manual {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 12px;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.sf-secret {
+  align-self: stretch;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  /* One click selects the whole thing: this is retyped, not edited. */
+  user-select: all;
+}
+
+.sf-manual-acts { display: flex; gap: 6px; }
+
+.sf-field { display: flex; flex-direction: column; gap: 4px; }
+
+.sf-code {
+  width: 150px;
+  padding: 8px 10px;
+  font-size: 19px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.sf-code:focus { outline: none; border-color: var(--accent); }
+
+.sf-says { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-3); }
+
+.sf-plain {
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.sf-plain:hover { color: var(--ink); border-color: var(--ink-3); }
+
+.sf-go {
+  align-self: flex-start;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sf-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.sf-danger { background: var(--loss); }
+
+.sf-feet { display: flex; gap: 6px; }

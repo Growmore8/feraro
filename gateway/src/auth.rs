@@ -35,6 +35,8 @@ use argon2::Argon2;
 use domain::UserId;
 use serde::{Deserialize, Serialize};
 
+use crate::totp::Totp;
+
 /// How long a session token stays valid without being used.
 pub const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 
@@ -155,6 +157,37 @@ pub struct User {
     pub manager: Option<UserId>,
     /// Argon2id PHC string. Never leaves this process.
     hash: String,
+    /// The authenticator secret, once one has been set up.
+    ///
+    /// Held here and not in the journal for the same reason the password
+    /// hash is: a second factor is rotated, replaced and switched off, and
+    /// an append-only log cannot honour any of that.
+    second: Option<Second>,
+}
+
+/// One login's second factor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Second {
+    /// Base32, as the authenticator app was given it.
+    secret: String,
+    /// False while enrolment is half done.
+    ///
+    /// A secret is written before it is proved to work, because the app has
+    /// it as soon as the code is scanned and a crash in between must not
+    /// leave the two disagreeing. Until a code from it has been typed back,
+    /// it does not gate anything — otherwise a mistyped setup would lock
+    /// somebody out of their own platform.
+    confirmed: bool,
+    /// The last time step a code was accepted from.
+    ///
+    /// # Why this is stored
+    ///
+    /// A code lasts thirty seconds, so one read over a shoulder or off a
+    /// screen share can be used again inside its window. Refusing anything
+    /// at or below the last accepted step is what makes a one-time
+    /// password actually one-time.
+    #[serde(default)]
+    used_step: u64,
 }
 
 /// The on-disk shape.
@@ -176,6 +209,11 @@ struct StoredUser {
     #[serde(default)]
     manager: Option<u64>,
     hash: String,
+    /// Absent in a store written before two-factor existed, which is a
+    /// login with no second factor — the only safe reading, since the
+    /// alternative would lock everyone out at once.
+    #[serde(default)]
+    second: Option<Second>,
 }
 
 fn no_kyc() -> Kyc {
@@ -191,6 +229,7 @@ impl From<&User> for StoredUser {
             kyc: u.kyc,
             manager: u.manager.map(|m| m.0),
             hash: u.hash.clone(),
+            second: u.second.clone(),
         }
     }
 }
@@ -204,11 +243,26 @@ impl From<StoredUser> for User {
             kyc: s.kyc,
             manager: s.manager.map(UserId),
             hash: s.hash,
+            second: s.second,
         }
     }
 }
 
 impl User {
+    /// True when a working second factor is set up on this login.
+    pub fn has_second_factor(&self) -> bool {
+        self.second.as_ref().is_some_and(|s| s.confirmed)
+    }
+
+    /// True when this login can move money, so it ought to have one.
+    ///
+    /// Said as a question about the role rather than about the person: a
+    /// client cannot move money without the desk agreeing, and making them
+    /// carry a phone to trade would cost the platform clients for no gain.
+    pub fn should_have_second_factor(&self) -> bool {
+        self.role >= Role::Manager
+    }
+
     /// True when `password` is the one this user set.
     ///
     /// Always does the full Argon2 work, even against a hash that cannot
@@ -306,6 +360,7 @@ impl Users {
             kyc: Kyc::None,
             manager: None,
             hash,
+            second: None,
         });
         self.save()?;
         Ok(id)
@@ -438,13 +493,112 @@ impl Users {
             .find(|u| u.login.eq_ignore_ascii_case(login.trim()))
     }
 
+    /// Starts setting up a second factor, returning the secret once.
+    ///
+    /// The secret is written immediately but unconfirmed. The app has it as
+    /// soon as the code is scanned, so a crash between showing it and
+    /// proving it must not leave the two disagreeing — and an unconfirmed
+    /// secret gates nothing, so writing it early costs nothing either.
+    ///
+    /// Starting again replaces whatever was half done. It will not replace
+    /// a *confirmed* one: turning off a working second factor is its own
+    /// decision and needs a current code, which is what
+    /// [`Users::stop_second_factor`] is for.
+    pub fn begin_second_factor(&mut self, id: UserId) -> Result<Totp> {
+        // getrandom's error is not a std::error::Error, so it cannot be
+        // carried; and there is nothing useful to say about it anyway. A
+        // system that will not give random bytes is a system to refuse on:
+        // a predictable second factor is worse than none, because it is
+        // trusted.
+        let Ok(fresh) = Totp::fresh() else {
+            bail!("the system would not give random bytes, so no secret was made");
+        };
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.id == id)
+            .with_context(|| format!("no user {}", id.0))?;
+        if user.has_second_factor() {
+            bail!("this login already has an authenticator; turn it off first");
+        }
+        user.second = Some(Second {
+            secret: fresh.to_base32(),
+            confirmed: false,
+            used_step: 0,
+        });
+        self.save()?;
+        Ok(fresh)
+    }
+
+    /// Finishes setting one up, by proving a code from it works.
+    pub fn confirm_second_factor(&mut self, id: UserId, code: &str, now_unix: u64) -> Result<()> {
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.id == id)
+            .with_context(|| format!("no user {}", id.0))?;
+        let Some(second) = user.second.as_mut() else {
+            bail!("there is nothing to confirm — start again");
+        };
+        if second.confirmed {
+            bail!("this login already has an authenticator");
+        }
+        let Some(totp) = Totp::parse(&second.secret) else {
+            bail!("the stored secret is unreadable — start again");
+        };
+        let Some(step) = totp.check(code, now_unix) else {
+            bail!("that code is not from this authenticator, or its clock is out");
+        };
+        second.confirmed = true;
+        second.used_step = step;
+        self.save()
+    }
+
+    /// Turns one off, which needs a current code from it.
+    ///
+    /// Not only the password: a session is already signed in, so asking for
+    /// the password again would prove nothing a stolen session could not
+    /// also prove. A code proves the phone is present, which is the thing
+    /// being removed.
+    pub fn stop_second_factor(&mut self, id: UserId, code: &str, now_unix: u64) -> Result<()> {
+        let user = self
+            .users
+            .iter_mut()
+            .find(|u| u.id == id)
+            .with_context(|| format!("no user {}", id.0))?;
+        let Some(second) = user.second.as_ref() else {
+            bail!("this login has no authenticator");
+        };
+        if !second.confirmed {
+            // Half-set-up is not a factor anybody is relying on, so it goes
+            // without a code — there may be no working app to get one from.
+            user.second = None;
+            return self.save();
+        }
+        let Some(totp) = Totp::parse(&second.secret) else {
+            bail!("the stored secret is unreadable");
+        };
+        if totp.check(code, now_unix).is_none() {
+            bail!("that code is wrong");
+        }
+        user.second = None;
+        self.save()
+    }
+
     /// Checks a password, counting failures.
     ///
     /// After [`MAX_FAILURES`] wrong attempts a login waits [`LOCKOUT`] before
     /// it is tried again, so a password is not reachable by typing quickly.
     /// The lockout is per login, not per connection: moving to a new socket
     /// is free, and rate-limiting the socket would protect nothing.
-    pub fn sign_in(&mut self, login: &str, password: &str, now: Instant) -> SignIn {
+    pub fn sign_in(
+        &mut self,
+        login: &str,
+        password: &str,
+        code: &str,
+        now_unix: u64,
+        now: Instant,
+    ) -> SignIn {
         let key = login.trim().to_ascii_lowercase();
         if let Some((count, until)) = self.failures.get(&key) {
             if *count >= MAX_FAILURES && now < *until {
@@ -468,6 +622,21 @@ impl Users {
 
         match (ok, found) {
             (true, Some(user)) => {
+                // The password was right. A login with a second factor is
+                // not in yet, and the failure counter keeps counting —
+                // otherwise the code could be guessed at any rate.
+                if user.has_second_factor() {
+                    match self.check_second(user.id, code, now_unix) {
+                        SecondFactor::Missing => return SignIn::CodeRequired,
+                        SecondFactor::Wrong(why) => {
+                            let entry = self.failures.entry(key).or_insert((0, now));
+                            entry.0 = entry.0.saturating_add(1);
+                            entry.1 = now + LOCKOUT;
+                            return SignIn::CodeRefused(why);
+                        }
+                        SecondFactor::Ok => {}
+                    }
+                }
                 self.failures.remove(&key);
                 SignIn::Ok(user)
             }
@@ -481,12 +650,65 @@ impl Users {
     }
 }
 
+/// Why a second factor did not let somebody in.
+enum SecondFactor {
+    Ok,
+    /// Nothing was typed, which is the normal first round trip.
+    Missing,
+    Wrong(&'static str),
+}
+
+impl Users {
+    /// Checks a code and burns the step it came from.
+    ///
+    /// The step is recorded *before* the caller is told yes, so a code is
+    /// spent whether or not anything else about the sign-in works out.
+    fn check_second(&mut self, id: UserId, code: &str, now_unix: u64) -> SecondFactor {
+        if code.trim().is_empty() {
+            return SecondFactor::Missing;
+        }
+        let Some(user) = self.users.iter_mut().find(|u| u.id == id) else {
+            return SecondFactor::Wrong("that code is wrong");
+        };
+        let Some(second) = user.second.as_mut() else {
+            return SecondFactor::Wrong("that code is wrong");
+        };
+        let Some(totp) = Totp::parse(&second.secret) else {
+            return SecondFactor::Wrong("the stored secret is unreadable");
+        };
+        let Some(step) = totp.check(code, now_unix) else {
+            return SecondFactor::Wrong("that code is wrong");
+        };
+        // Already used. A code lasts thirty seconds and one read over a
+        // shoulder would otherwise work twice.
+        if step <= second.used_step {
+            return SecondFactor::Wrong("that code has already been used — wait for the next one");
+        }
+        second.used_step = step;
+        // A write per sign-in, which is the price of this being honest
+        // about replay across a restart.
+        if self.save().is_err() {
+            return SecondFactor::Wrong("could not record that code");
+        }
+        SecondFactor::Ok
+    }
+}
+
 /// The outcome of one sign-in attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignIn {
     Ok(User),
     /// Wrong login, wrong password — deliberately not distinguished.
     Refused,
+    /// The password was right and this login needs a code as well.
+    ///
+    /// Distinguished from [`SignIn::Refused`], and deliberately so: it does
+    /// tell somebody with the right password that the account exists, which
+    /// they already knew. The alternative is a terminal that cannot ask for
+    /// a code without asking everybody for one.
+    CodeRequired,
+    /// A code was typed and was not accepted.
+    CodeRefused(&'static str),
     TooManyAttempts {
         retry_in: Duration,
     },
@@ -637,6 +859,9 @@ fn invented_password() -> String {
 mod tests {
     use super::*;
 
+    /// One code window, in seconds.
+    const STEP_SECS: u64 = crate::totp::STEP;
+
     struct Scratch(PathBuf);
 
     impl Scratch {
@@ -654,6 +879,315 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    // ── Two-factor ────────────────────────────────────────────────────
+
+    /// A store with one desk login, and the login's id.
+    fn with_desk(s: &Scratch) -> (Users, UserId, String) {
+        let (mut users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let id = users
+            .add("desk@feraro.local", "a-long-enough-password", Role::Admin)
+            .unwrap();
+        (users, id, "desk@feraro.local".to_owned())
+    }
+
+    /// The code an enrolled login's app would be showing.
+    fn code_now(users: &Users, id: UserId, at: u64) -> String {
+        let secret = users
+            .by_id(id)
+            .unwrap()
+            .second
+            .as_ref()
+            .expect("enrolled")
+            .secret
+            .clone();
+        Totp::parse(&secret).unwrap().code_at(Totp::step_of(at))
+    }
+
+    #[test]
+    fn a_desk_login_is_told_it_should_have_a_second_factor_and_a_client_is_not() {
+        let s = Scratch::new("2fa-wanted");
+        let (mut users, desk, _) = with_desk(&s);
+        let client = users
+            .add("trader@example.com", "a-long-enough-password", Role::Client)
+            .unwrap();
+
+        // Said as a question about the role: a desk login can take money
+        // out of a client's account, and a client cannot move money without
+        // the desk agreeing.
+        assert!(users.by_id(desk).unwrap().should_have_second_factor());
+        assert!(!users.by_id(client).unwrap().should_have_second_factor());
+        assert!(!users.by_id(desk).unwrap().has_second_factor());
+    }
+
+    #[test]
+    fn enrolment_is_not_finished_until_a_code_from_it_is_typed_back() {
+        let s = Scratch::new("2fa-enrol");
+        let (mut users, id, login) = with_desk(&s);
+        let now = 1_700_000_000u64;
+
+        let totp = users.begin_second_factor(id).unwrap();
+        // The secret is written at once, because the app has it as soon as
+        // the code is scanned. But it gates nothing yet: a mistyped setup
+        // must not lock somebody out of their own platform.
+        assert!(!users.by_id(id).unwrap().has_second_factor());
+        assert!(matches!(
+            users.sign_in(&login, "a-long-enough-password", "", now, Instant::now()),
+            SignIn::Ok(_)
+        ));
+
+        // A code from a different secret does not finish it.
+        let other = Totp::fresh().unwrap();
+        assert!(users
+            .confirm_second_factor(id, &other.code_at(Totp::step_of(now)), now)
+            .is_err());
+        assert!(!users.by_id(id).unwrap().has_second_factor());
+
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+        assert!(users.by_id(id).unwrap().has_second_factor());
+    }
+
+    #[test]
+    fn once_it_is_on_the_password_alone_is_not_enough() {
+        let s = Scratch::new("2fa-signin");
+        let (mut users, id, login) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        // The right password, and still not in. Told apart from a refusal
+        // on purpose: a screen that could not ask for a code without
+        // asking everybody for one would ask the clients too.
+        assert_eq!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                "",
+                now + 60,
+                Instant::now()
+            ),
+            SignIn::CodeRequired
+        );
+        // A wrong password is still a plain refusal, whatever the code.
+        assert_eq!(
+            users.sign_in(
+                &login,
+                "not the password",
+                &totp.code_at(Totp::step_of(now + 60)),
+                now + 60,
+                Instant::now()
+            ),
+            SignIn::Refused
+        );
+        assert!(matches!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                &totp.code_at(Totp::step_of(now + 60)),
+                now + 60,
+                Instant::now()
+            ),
+            SignIn::Ok(_)
+        ));
+    }
+
+    #[test]
+    fn a_code_works_once_even_inside_its_thirty_seconds() {
+        // The reason the step is stored. A code read over a shoulder, or
+        // off a screen share, would otherwise be good for the rest of its
+        // window — which is not what "one-time password" means.
+        let s = Scratch::new("2fa-replay");
+        let (mut users, id, login) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        let next = now + STEP_SECS;
+        let code = totp.code_at(Totp::step_of(next));
+        assert!(matches!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                &code,
+                next,
+                Instant::now()
+            ),
+            SignIn::Ok(_)
+        ));
+        // The same code, one second later, inside the same window.
+        assert!(matches!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                &code,
+                next + 1,
+                Instant::now()
+            ),
+            SignIn::CodeRefused(_)
+        ));
+        // And the next one works, so refusing a used code has not broken
+        // the login.
+        let after = next + STEP_SECS;
+        assert!(matches!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                &totp.code_at(Totp::step_of(after)),
+                after,
+                Instant::now()
+            ),
+            SignIn::Ok(_)
+        ));
+    }
+
+    #[test]
+    fn a_used_code_stays_used_across_a_restart() {
+        // The step is on disk rather than in memory, so a gateway restart
+        // is not a way to replay a code.
+        let s = Scratch::new("2fa-restart");
+        let (mut users, id, login) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        let next = now + STEP_SECS;
+        let code = totp.code_at(Totp::step_of(next));
+        assert!(matches!(
+            users.sign_in(
+                &login,
+                "a-long-enough-password",
+                &code,
+                next,
+                Instant::now()
+            ),
+            SignIn::Ok(_)
+        ));
+        drop(users);
+
+        let (mut again, _) = Users::load_or_seed(&s.file()).unwrap();
+        assert!(again.by_id(id).unwrap().has_second_factor());
+        assert!(matches!(
+            again.sign_in(
+                &login,
+                "a-long-enough-password",
+                &code,
+                next,
+                Instant::now()
+            ),
+            SignIn::CodeRefused(_)
+        ));
+    }
+
+    #[test]
+    fn guessing_codes_runs_into_the_same_lockout_as_guessing_passwords() {
+        // Otherwise the second factor would be six digits guessable at any
+        // rate, which is a million tries against a thirty-second window.
+        let s = Scratch::new("2fa-lockout");
+        let (mut users, id, login) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        let start = Instant::now();
+        for _ in 0..MAX_FAILURES {
+            assert!(matches!(
+                users.sign_in(&login, "a-long-enough-password", "000000", now, start),
+                SignIn::CodeRefused(_)
+            ));
+        }
+        assert!(matches!(
+            users.sign_in(&login, "a-long-enough-password", "000000", now, start),
+            SignIn::TooManyAttempts { .. }
+        ));
+    }
+
+    #[test]
+    fn turning_it_off_needs_a_current_code() {
+        // A session is already signed in, so asking for the password again
+        // would prove nothing a stolen session could not also prove. A code
+        // proves the phone is present, which is the thing being removed.
+        let s = Scratch::new("2fa-off");
+        let (mut users, id, _) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        assert!(users.stop_second_factor(id, "000000", now).is_err());
+        assert!(users.by_id(id).unwrap().has_second_factor());
+
+        let later = now + STEP_SECS;
+        users
+            .stop_second_factor(id, &code_now(&users, id, later), later)
+            .unwrap();
+        assert!(!users.by_id(id).unwrap().has_second_factor());
+    }
+
+    #[test]
+    fn a_half_finished_enrolment_can_be_abandoned_without_a_code() {
+        // There may be no working app to get one from — that is what
+        // half-finished means — and an unconfirmed secret gates nothing,
+        // so there is nothing being weakened by letting it go.
+        let s = Scratch::new("2fa-abandon");
+        let (mut users, id, _) = with_desk(&s);
+        users.begin_second_factor(id).unwrap();
+        users.stop_second_factor(id, "", 0).unwrap();
+        assert!(users.by_id(id).unwrap().second.is_none());
+    }
+
+    #[test]
+    fn a_working_second_factor_is_not_replaced_by_starting_again() {
+        // Otherwise anybody with the session could enrol their own phone
+        // over the top, which is a way to take the account rather than a
+        // way to secure it.
+        let s = Scratch::new("2fa-replace");
+        let (mut users, id, _) = with_desk(&s);
+        let now = 1_700_000_000u64;
+        let totp = users.begin_second_factor(id).unwrap();
+        users
+            .confirm_second_factor(id, &totp.code_at(Totp::step_of(now)), now)
+            .unwrap();
+
+        assert!(users.begin_second_factor(id).is_err());
+        // And the original still works.
+        let later = now + STEP_SECS;
+        assert!(users
+            .by_id(id)
+            .unwrap()
+            .second
+            .as_ref()
+            .map(|sec| sec.secret.clone())
+            .and_then(|sec| Totp::parse(&sec))
+            .map(|t| t.code_at(Totp::step_of(later)) == totp.code_at(Totp::step_of(later)))
+            .unwrap_or(false));
+    }
+
+    #[test]
+    fn a_store_written_before_two_factor_reads_as_a_login_without_one() {
+        // The only safe reading: the alternative locks everybody out at
+        // once, on the upgrade, with nobody able to sign in and fix it.
+        let s = Scratch::new("2fa-old-store");
+        std::fs::write(
+            s.file(),
+            r#"{"users":[{"id":1,"login":"old@feraro.local","role":"admin","hash":"x"}]}"#,
+        )
+        .unwrap();
+        let (users, _) = Users::load_or_seed(&s.file()).unwrap();
+        let user = users.by_id(UserId(1)).unwrap();
+        assert!(!user.has_second_factor());
+        assert!(user.should_have_second_factor());
     }
 
     #[test]
@@ -818,7 +1352,7 @@ mod tests {
         assert!(again.is_empty(), "an existing store is not re-seeded");
 
         let (login, password) = &seeded[1];
-        let SignIn::Ok(user) = users.sign_in(login, password, Instant::now()) else {
+        let SignIn::Ok(user) = users.sign_in(login, password, "", 0, Instant::now()) else {
             panic!("the seeded password should work after a reload");
         };
         assert_eq!(user.role, Role::Client);
@@ -829,8 +1363,14 @@ mod tests {
         let s = Scratch::new("refuse");
         let (mut users, seeded) = Users::load_or_seed(&s.file()).unwrap();
         let now = Instant::now();
-        assert_eq!(users.sign_in(&seeded[0].0, "not it", now), SignIn::Refused);
-        assert_eq!(users.sign_in("nobody", "not it", now), SignIn::Refused);
+        assert_eq!(
+            users.sign_in(&seeded[0].0, "not it", "", 0, now),
+            SignIn::Refused
+        );
+        assert_eq!(
+            users.sign_in("nobody", "not it", "", 0, now),
+            SignIn::Refused
+        );
     }
 
     #[test]
@@ -840,22 +1380,22 @@ mod tests {
         let (login, password) = &seeded[0];
         let now = Instant::now();
         for _ in 0..MAX_FAILURES {
-            assert_eq!(users.sign_in(login, "wrong", now), SignIn::Refused);
+            assert_eq!(users.sign_in(login, "wrong", "", 0, now), SignIn::Refused);
         }
         // Even the right password waits: the attempt is what is limited.
         assert!(matches!(
-            users.sign_in(login, password, now),
+            users.sign_in(login, password, "", 0, now),
             SignIn::TooManyAttempts { .. }
         ));
         // ... until the lockout passes.
         let later = now + LOCKOUT + Duration::from_secs(1);
         assert!(matches!(
-            users.sign_in(login, password, later),
+            users.sign_in(login, password, "", 0, later),
             SignIn::Ok(_)
         ));
         // And a success forgives the count.
         assert!(matches!(
-            users.sign_in(login, password, later),
+            users.sign_in(login, password, "", 0, later),
             SignIn::Ok(_)
         ));
     }
@@ -870,10 +1410,10 @@ mod tests {
 
         let now = Instant::now();
         assert!(matches!(
-            users.sign_in(&login, "a-much-longer-one", now),
+            users.sign_in(&login, "a-much-longer-one", "", 0, now),
             SignIn::Ok(_)
         ));
-        assert_eq!(users.sign_in(&login, &old, now), SignIn::Refused);
+        assert_eq!(users.sign_in(&login, &old, "", 0, now), SignIn::Refused);
         assert!(users.set_password(id, "short").is_err());
     }
 
@@ -887,7 +1427,7 @@ mod tests {
             .add("DEMO@feraro.local", "longenough", Role::Client)
             .is_err());
         assert!(matches!(
-            users.sign_in("DEMO@FERARO.LOCAL", "wrong", Instant::now()),
+            users.sign_in("DEMO@FERARO.LOCAL", "wrong", "", 0, Instant::now()),
             SignIn::Refused
         ));
 

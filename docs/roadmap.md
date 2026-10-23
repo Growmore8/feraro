@@ -54,13 +54,27 @@ replay. That is the cost of this architecture and it is paid deliberately.
       cannot be parked elsewhere; both legs appear on their statements with
       one sequence number. A client moves their own money without asking;
       money between two people is an administrator's.
+- [x] **Two-factor for desk logins** — TOTP, RFC 6238, written out rather
+      than pulled in: SHA-1, HMAC and base32 are two hundred lines, and a
+      dependency on the authentication path is one whose every future
+      version has to be read. Pinned to the published vectors. A used code
+      is refused for the rest of its window, including across a restart,
+      so a one-time password is used once. Offered to desk logins only — a
+      client cannot move money without the desk agreeing — and the desk
+      screen says so until it is set up.
 
 ## Next, in order
 
 Ordered by what a broker needs to operate, not by size.
 
-- [ ] **Two-factor for desk logins** — TOTP. A login that can move money is
-      single-factor today.
+- [ ] **Make two-factor compulsory** for desk logins, behind a setting. It
+      is offered and nagged about today; nothing refuses a desk login that
+      has not set it up, because the switch that would is also the switch
+      that locks an operator out of their own platform on upgrade.
+- [ ] **A QR code for enrolment.** The secret is typed in by hand today.
+      Fetching a QR tells an image service the secret, and a hand-written
+      encoder cannot be tested here without also writing a decoder — so it
+      waits for one that can be.
 - [ ] **Partial close** *(engine)* and **modify an open trade**.
 - [ ] **Trailing stop** *(engine)* and **expiry on resting orders**.
 - [ ] **Per-account risk settings** — leverage, margin-call level, maximum
