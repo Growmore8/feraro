@@ -758,6 +758,7 @@ mod tests {
                 price: Price::parse("1.08532").unwrap(),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         ]
     }

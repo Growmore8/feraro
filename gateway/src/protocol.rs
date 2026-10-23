@@ -154,6 +154,9 @@ pub enum ClientMessage {
     /// Administrator: set one. Zero removes it.
     #[serde(rename_all = "camelCase")]
     AdminSetMarkup { instrument: u32, markup: String },
+    /// Administrator: what opening one unit costs. Zero removes it.
+    #[serde(rename_all = "camelCase")]
+    AdminSetCommission { instrument: u32, commission: String },
     /// Desk: "I have looked, and the money is there" — or it is not.
     ///
     /// Crediting is a separate, journaled deposit. This only closes the
@@ -416,6 +419,8 @@ pub struct MarkupDto {
     pub symbol: String,
     /// Added to each side, so the spread widens by twice it.
     pub markup: String,
+    /// Charged per unit of quantity when a position opens or closes.
+    pub commission: String,
     /// The widened spread as it stands, in the instrument's own points, so
     /// the desk can see what a client is actually quoted.
     pub spread: Option<String>,

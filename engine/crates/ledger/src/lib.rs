@@ -396,6 +396,42 @@ pub fn close_position(
     })
 }
 
+/// Commission charged when a position opens.
+///
+/// Two legs: the trader's cash goes down, the broker's commission book goes
+/// up. It is its own transaction rather than part of the fill because a
+/// fill moves no cash at all — opening a position posts margin, which is
+/// not a payment — whereas commission leaves the account the moment the
+/// trade is done.
+///
+/// Kept apart from `RealisedPnl` for the reason the swap book is: a broker
+/// is asked what it earned in commission and what it earned in spread, and
+/// they are different answers. Spread needs no book of its own — it is
+/// already inside the price the client dealt at, so it reaches
+/// `RealisedPnl` on its own when the position closes.
+pub fn commission(
+    id: TxId,
+    at: Timestamp,
+    who: AccountId,
+    currency: Currency,
+    amount: Money,
+) -> Result<Transaction, LedgerError> {
+    Ok(Transaction {
+        id,
+        at,
+        postings: vec![
+            Posting::new(
+                LedgerAccount::client(who, AccountKind::ClientCash, currency),
+                amount.neg()?,
+            ),
+            Posting::new(
+                LedgerAccount::house(AccountKind::Commission, currency),
+                amount,
+            ),
+        ],
+    })
+}
+
 /// An amendment: money moved to put something right.
 ///
 /// `amount` is signed as the client sees it — positive pays them. The house

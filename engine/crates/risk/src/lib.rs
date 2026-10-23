@@ -244,6 +244,8 @@ pub struct Market {
     /// So the widening happens once, on the way in, and this records how
     /// much it was so a fill can journal what the house earned.
     markups: BTreeMap<InstrumentId, Price>,
+    /// Commission per unit of quantity, per instrument.
+    commissions: BTreeMap<InstrumentId, Money>,
     /// The currency every account here is held in and every rate converts to.
     settlement: Currency,
     /// What each instrument is priced in, from its listing.
@@ -257,6 +259,7 @@ impl Default for Market {
         Market {
             quotes: BTreeMap::new(),
             markups: BTreeMap::new(),
+            commissions: BTreeMap::new(),
             settlement: Currency::USD,
             quoted_in: BTreeMap::new(),
             routes: BTreeMap::new(),
@@ -408,6 +411,28 @@ impl Market {
         self.quotes.insert(instrument, (wide_bid, wide_ask));
         self.markups.insert(instrument, markup);
         markup
+    }
+
+    /// Commission per unit of quantity, in the settlement currency.
+    pub fn commission_of(&self, instrument: InstrumentId) -> Money {
+        self.commissions
+            .get(&instrument)
+            .copied()
+            .unwrap_or(Money::ZERO)
+    }
+
+    /// Sets what this instrument charges to open, per unit of quantity.
+    ///
+    /// Kept beside the markup, because both arrive with the price and both
+    /// are read at the moment of a fill — including a resting order
+    /// filling hours later. One place to read means a market order and a
+    /// limit order cannot be charged differently by accident.
+    pub fn charge(&mut self, instrument: InstrumentId, per_unit: Money) {
+        if per_unit <= Money::ZERO {
+            self.commissions.remove(&instrument);
+        } else {
+            self.commissions.insert(instrument, per_unit);
+        }
     }
 
     /// What the house is adding to each side of this instrument, or zero.
@@ -891,6 +916,13 @@ impl Account {
     /// read from the market because this runs on replay too, where the rate
     /// must be the one the fill was taken at, not today's. It comes from
     /// [`Event::OrderFilled::rate`].
+    /// Applies a fill, and takes the commission it cost.
+    ///
+    /// `commission` leaves the balance here rather than at the close,
+    /// because that is when it is charged: a position opened and closed a
+    /// second later still cost it. It is deliberately *not* part of
+    /// `Realised` — that is what the position made, and a charge for
+    /// opening it is not profit.
     fn fill(
         &mut self,
         instrument: InstrumentId,
@@ -899,7 +931,15 @@ impl Account {
         qty: Qty,
         price: Price,
         rate: Price,
+        commission: Money,
     ) -> Result<Realised, RiskError> {
+        // Before any branch. A hedging account returns early a few lines
+        // down, and a charge that only some accounts pay is a bug nobody
+        // would find until a client asked why.
+        if !commission.is_zero() {
+            self.balance = self.balance.sub(commission)?;
+        }
+
         let lots = self.lots.entry(instrument).or_default();
         let mut remaining = qty;
         let mut realised = Realised::default();
@@ -1088,6 +1128,14 @@ pub struct ProposedOrder {
     pub qty: Qty,
     /// Limit or stop price. Ignored for a market order.
     pub price: Price,
+    /// What opening this would cost in commission, in the account's
+    /// currency.
+    ///
+    /// Part of the proposal rather than looked up, because the margin test
+    /// has to include it: an order a trader can afford the margin for but
+    /// not the commission would open and leave the balance short, and the
+    /// first they would know is a figure that does not add up.
+    pub commission: Money,
 }
 
 /// Decides whether an order may reach the book.
@@ -1208,6 +1256,7 @@ pub fn margin_needed(
         order.qty,
         fill_price,
         rate,
+        order.commission,
     )?;
     let after = hypothetical.used_margin(market, policy)?;
 
@@ -1415,6 +1464,15 @@ impl Portfolio {
     /// `None` is not "anyone may trade it": it is an account from before
     /// ownership was recorded, and the caller decides what that means. The
     /// gateway refuses it.
+    /// Which account an order belongs to.
+    ///
+    /// The books need it: a commission posting has to name the account the
+    /// money came out of, and `OrderFilled` carries the ticket rather than
+    /// the account — the link is remembered from acceptance.
+    pub fn owner_of_order(&self, order: OrderId) -> Option<AccountId> {
+        self.order_owner.get(&order).map(|(account, _)| *account)
+    }
+
     pub fn owner_of(&self, account: AccountId) -> Option<UserId> {
         self.owner.get(&account).copied()
     }
@@ -1694,6 +1752,7 @@ impl Portfolio {
                 // journaled so the house can total what it earned, which is
                 // a report rather than a balance.
                 markup: _,
+                commission,
             } => {
                 let (owner, _) = *self
                     .order_owner
@@ -1703,7 +1762,8 @@ impl Portfolio {
                     .accounts
                     .get_mut(&owner)
                     .ok_or(RiskError::UnknownAccount(owner))?;
-                let realised = account.fill(instrument, order, side, qty, price, rate)?;
+                let realised =
+                    account.fill(instrument, order, side, qty, price, rate, commission)?;
                 applied.realised = Some((owner, realised));
             }
             Event::PositionStoppedOut {
@@ -1727,7 +1787,8 @@ impl Portfolio {
                         .first()
                         .map(|l| l.side.opposite())
                         .unwrap_or(Side::Sell);
-                    a.fill(instrument, OrderId(0), side, qty, price, rate)?
+                    // A stop-out closes; it charges no commission to do it.
+                    a.fill(instrument, OrderId(0), side, qty, price, rate, Money::ZERO)?
                 } else {
                     a.close_lot(instrument, order, price, rate)?
                 };
@@ -2147,6 +2208,7 @@ mod tests {
                 q("0.10"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2189,6 +2251,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -2199,6 +2262,7 @@ mod tests {
                 q("1"),
                 p("2601.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2225,6 +2289,7 @@ mod tests {
                 q("0.10"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2242,6 +2307,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("1"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &market, order, MarginPolicy::default()),
@@ -2260,6 +2326,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("20"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &market, order, MarginPolicy::default()),
@@ -2282,6 +2349,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2295,6 +2363,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("1"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             margin_needed(&account, &market, closing, policy).unwrap(),
@@ -2326,6 +2395,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("0.10"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
 
         let too_small = ProposedOrder {
@@ -2365,6 +2435,7 @@ mod tests {
             kind: OrderType::Limit,
             qty: q("20"),
             price: p("70000.00"),
+            commission: Money::ZERO,
         };
 
         // Shape is fine: the size is legal and the price is on the grid.
@@ -2396,6 +2467,7 @@ mod tests {
             kind: OrderType::Limit,
             qty: q("0.10"),
             price: p("79000.005"),
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &market, order, policy),
@@ -2422,6 +2494,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("0.10"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
 
         account.tradeable = false;
@@ -2449,6 +2522,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("0.10"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &empty, order, MarginPolicy::default()),
@@ -2467,6 +2541,7 @@ mod tests {
                 q("1"),
                 p("70000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -2477,6 +2552,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2489,6 +2565,7 @@ mod tests {
                 q("1"),
                 p("85000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         assert_eq!(
@@ -2513,6 +2590,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -2523,6 +2601,7 @@ mod tests {
                 q("3"),
                 p("81000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2548,6 +2627,7 @@ mod tests {
                 q("1.2"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2575,6 +2655,7 @@ mod tests {
                 q("1.2"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2609,6 +2690,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -2619,6 +2701,7 @@ mod tests {
                 q("10"),
                 p("2600.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2651,10 +2734,19 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
-            .fill(ETH, OrderId(2), Side::Buy, q("1"), p("2600.00"), Price::ONE)
+            .fill(
+                ETH,
+                OrderId(2),
+                Side::Buy,
+                q("1"),
+                p("2600.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
             .unwrap();
 
         market.quote(BTC, p("78400.00"), p("78410.00"));
@@ -2684,6 +2776,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -2709,6 +2802,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         market.quote(BTC, p("90000.00"), p("90010.00"));
@@ -2763,6 +2857,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("1"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &market, order, policy),
@@ -2819,6 +2914,7 @@ mod tests {
                 price: p("80010.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         ];
         for (i, e) in events.into_iter().enumerate() {
@@ -2875,6 +2971,7 @@ mod tests {
                     price: p("80010.00"),
                     rate: Price::ONE,
                     markup: Price::ZERO,
+                    commission: Money::ZERO,
                 },
             ];
             for (i, e) in events.into_iter().enumerate() {
@@ -2927,6 +3024,7 @@ mod tests {
                 price: p("70000.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         ]
         .into_iter()
@@ -2960,6 +3058,7 @@ mod tests {
             price: p("80000.00"),
             rate: Price::ONE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             pf.apply(&rec(1, orphan)),
@@ -3010,6 +3109,7 @@ mod tests {
                 price: p("80000.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             Event::QuoteTicked {
                 instrument: BTC,
@@ -3087,6 +3187,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("1"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(pf.check(TRADER, &terms(), ok, policy), Ok(()));
 
@@ -3116,6 +3217,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         let equity_before = account.equity(&market).unwrap();
@@ -3142,6 +3244,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-21.92")).unwrap();
@@ -3156,6 +3259,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -3175,6 +3279,7 @@ mod tests {
                 q("3"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         // An amount that does not divide by three.
@@ -3188,6 +3293,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -3220,6 +3326,7 @@ mod tests {
                 q("7"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-1.00")).unwrap();
@@ -3233,6 +3340,7 @@ mod tests {
                     q("1"),
                     p("80000.00"),
                     Price::ONE,
+                    Money::ZERO,
                 )
                 .unwrap();
         }
@@ -3258,6 +3366,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-5.00")).unwrap();
@@ -3313,6 +3422,7 @@ mod tests {
                 price: p("80000.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             Event::SwapCharged {
                 account: TRADER,
@@ -3360,6 +3470,7 @@ mod tests {
                 q("1"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         assert_eq!(
@@ -3381,6 +3492,7 @@ mod tests {
                 q("1"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         // `fill` closes opposing lots first, so an opposing order of the same
@@ -3407,6 +3519,7 @@ mod tests {
                 q("3"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         // Add a short leg directly beside the long one.
@@ -3450,6 +3563,7 @@ mod tests {
                 q("1"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         if let Some(lots) = account.lots.get_mut(&BTC) {
@@ -3509,6 +3623,7 @@ mod tests {
                 q("1"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -3519,6 +3634,7 @@ mod tests {
                 q("10"),
                 p("2600.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -3540,6 +3656,7 @@ mod tests {
                 q("0.10"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         (account, market)
@@ -3587,6 +3704,7 @@ mod tests {
                 q("0.10"),
                 p("80000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -3683,6 +3801,7 @@ mod tests {
                 q("0.10"),
                 p("81000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -3715,6 +3834,7 @@ mod tests {
                 q("0.10"),
                 p("90000.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         let opening = account.balance;
@@ -3791,6 +3911,7 @@ mod tests {
                 price: p("79500.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             // A newer parcel bought above it: the bigger loser.
             Event::OrderAccepted {
@@ -3812,6 +3933,7 @@ mod tests {
                 price: p("80600.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         ];
 
@@ -3895,6 +4017,7 @@ mod tests {
                 price: p("80010.00"),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             Event::ProtectionSet {
                 account: TRADER,
@@ -4017,6 +4140,7 @@ mod tests {
                 q("0.10"),
                 p("80010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
 
@@ -4027,6 +4151,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("0.10"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(&account, &terms(), &market, opening, policy),
@@ -4161,6 +4286,7 @@ mod tests {
                 q("100000"),
                 p("147.508"),
                 p("147.504"),
+                Money::ZERO,
             )
             .unwrap();
 
@@ -4181,6 +4307,7 @@ mod tests {
                 q("100000"),
                 p("148.500"),
                 p("148.504"),
+                Money::ZERO,
             )
             .unwrap();
         assert_eq!(
@@ -4206,6 +4333,7 @@ mod tests {
                 q("100000"),
                 p("147.508"),
                 p("147.504"),
+                Money::ZERO,
             )
             .unwrap();
 
@@ -4236,6 +4364,7 @@ mod tests {
             kind: OrderType::Market,
             qty: q("1000"),
             price: Price::ZERO,
+            commission: Money::ZERO,
         };
         assert_eq!(
             check_order(
@@ -4345,6 +4474,7 @@ mod tests {
                 q("0.10"),
                 p("81010.00"),
                 Price::ONE,
+                Money::ZERO,
             )
             .unwrap();
         account
@@ -4355,6 +4485,7 @@ mod tests {
                 q("100000"),
                 p("147.608"),
                 p("147.504"),
+                Money::ZERO,
             )
             .unwrap();
 
@@ -4416,6 +4547,7 @@ mod tests {
                 price: p("147.508"),
                 rate: p("147.504"),
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             Event::OrderAccepted {
                 order: OrderId(2),
@@ -4437,6 +4569,7 @@ mod tests {
                 price: p("148.500"),
                 rate: p("148.504"),
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             // ... and then the yen moves a long way, as it does.
             Event::QuoteTicked {

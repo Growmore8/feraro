@@ -501,6 +501,20 @@ pub enum Event {
         /// Zero on a fill from a build that had no markup, and zero
         /// whenever none is charged.
         markup: Price,
+        /// Commission taken from the account's balance for this fill, in
+        /// the account's currency.
+        ///
+        /// # Why it is not the same as the markup beside it
+        ///
+        /// The markup is *inside* `price` — the client paid it by dealing
+        /// at a worse number, and it reaches the house when the position
+        /// closes. Commission is money leaving the balance the moment the
+        /// trade is done, whatever happens to the position afterwards. One
+        /// is a price, the other is a payment, and the books post them to
+        /// different places.
+        ///
+        /// Zero on a fill from a build that charged none.
+        commission: Money,
     },
     /// Margin level fell below the call threshold.
     MarginCallIssued {
@@ -879,7 +893,10 @@ impl Event {
             // A fill now carries the markup the house earned on it as well
             // as the conversion rate. `0x46` is the same event without it
             // and still decodes, with a markup of zero.
-            Event::OrderFilled { .. } => 0x4E,
+            // A fill now carries commission as well as the markup and the
+            // conversion rate. `0x4E` is the same event without it, and
+            // `0x46` without either; both still decode.
+            Event::OrderFilled { .. } => 0x4F,
             Event::PendingOrderPlaced { .. } => 0x37,
             Event::PendingOrderTriggered { .. } => 0x35,
             Event::MarginCallIssued { .. } => 0x40,
@@ -1306,6 +1323,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             price,
             rate,
             markup,
+            commission,
         } => {
             w.u64(order.0);
             w.u32(instrument.0);
@@ -1314,6 +1332,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             w.price(price);
             w.price(rate);
             w.price(markup);
+            w.money(commission);
         }
         Event::PendingOrderPlaced {
             by,
@@ -1590,6 +1609,7 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             price: r.price()?,
             rate: Price::ONE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         },
         // A fill with a conversion rate but no markup: the shape before
         // the house charged one.
@@ -1601,7 +1621,10 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             price: r.price()?,
             rate: r.price()?,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         },
+        // A fill with a markup but no commission: the shape before the
+        // house charged one.
         0x4E => Event::OrderFilled {
             order: OrderId(r.u64()?),
             instrument: InstrumentId(r.u32()?),
@@ -1610,6 +1633,17 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             price: r.price()?,
             rate: r.price()?,
             markup: r.price()?,
+            commission: Money::ZERO,
+        },
+        0x4F => Event::OrderFilled {
+            order: OrderId(r.u64()?),
+            instrument: InstrumentId(r.u32()?),
+            side: r.side()?,
+            qty: r.qty()?,
+            price: r.price()?,
+            rate: r.price()?,
+            markup: r.price()?,
+            commission: r.money()?,
         },
         0x34 => Event::PendingOrderPlaced {
             by: UserId::SYSTEM,
@@ -1830,6 +1864,7 @@ mod tests {
                 price: Price::parse("1.08500").unwrap(),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
             Event::PendingOrderPlaced {
                 order: OrderId(9),
@@ -1996,13 +2031,16 @@ mod tests {
                 price: Price::parse("1.08500").unwrap(),
                 rate: Price::ONE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         };
         let bytes = encode(&record);
-        // ... + price + rate + markup.
-        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8 + 8);
+        // ... + price + rate + markup + commission.
+        // ... + price + rate + markup, then commission, which is a Money
+        // and so crosses as sixteen bytes where a Price takes eight.
+        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8 + 8 + 16);
         assert_eq!(&bytes[..2], &WIRE_VERSION.to_le_bytes());
-        assert_eq!(bytes[18], 0x4E);
+        assert_eq!(bytes[18], 0x4F);
     }
 
     #[test]
@@ -2019,16 +2057,17 @@ mod tests {
             price: Price::parse("1.08500").unwrap(),
             rate: Price::ONE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         };
         let mut bytes = encode(&Record {
             seq: Seq(42),
             at: Timestamp(0),
             event: legacy,
         });
-        // Rewrite it as the oldest tag would have: 0x33, and neither the
-        // rate nor the markup on the end.
+        // Rewrite it as the oldest tag would have: 0x33, with none of the
+        // rate, the markup or the commission on the end.
         bytes[18] = 0x33;
-        bytes.truncate(bytes.len() - 16);
+        bytes.truncate(bytes.len() - 32);
         assert_eq!(decode(&bytes).expect("legacy fill decodes").event, legacy);
 
         // A stop-out from before either the rate or the ticket was recorded.
@@ -2095,18 +2134,75 @@ mod tests {
             price: Price::parse("1.08500").unwrap(),
             rate: Price::parse("147.500").unwrap(),
             markup: Price::ZERO,
+            commission: Money::ZERO,
         };
         let mut bytes = encode(&Record {
             seq: Seq(9),
             at: Timestamp(0),
             event: before,
         });
+        // Drop the markup and the commission from the end.
         bytes[18] = 0x46;
-        bytes.truncate(bytes.len() - 8);
+        bytes.truncate(bytes.len() - 24);
         assert_eq!(
             decode(&bytes).expect("a fill without markup decodes").event,
             before
         );
+    }
+
+    #[test]
+    fn a_fill_written_before_commission_existed_still_replays() {
+        // Tag 0x4E is a fill with a markup but no commission: the shape
+        // before the house charged one. It must fold to the same state,
+        // with nothing taken from the balance — because nothing was.
+        let before = Event::OrderFilled {
+            order: OrderId(7),
+            instrument: InstrumentId(1),
+            side: Side::Buy,
+            qty: Qty::parse("60000").unwrap(),
+            price: Price::parse("1.08500").unwrap(),
+            rate: Price::ONE,
+            markup: Price::parse("0.00002").unwrap(),
+            commission: Money::ZERO,
+        };
+        let mut bytes = encode(&Record {
+            seq: Seq(11),
+            at: Timestamp(0),
+            event: before,
+        });
+        bytes[18] = 0x4E;
+        bytes.truncate(bytes.len() - 16);
+        assert_eq!(
+            decode(&bytes)
+                .expect("a fill without commission decodes")
+                .event,
+            before
+        );
+    }
+
+    #[test]
+    fn a_commission_survives_the_wire_to_the_last_place() {
+        // It left somebody's balance, so it has to come back exactly.
+        let charged = Money::parse("3.070000007").unwrap();
+        let record = Record {
+            seq: Seq(2),
+            at: Timestamp(0),
+            event: Event::OrderFilled {
+                order: OrderId(1),
+                instrument: InstrumentId(1),
+                side: Side::Buy,
+                qty: Qty::parse("1000").unwrap(),
+                price: Price::parse("1.08500").unwrap(),
+                rate: Price::ONE,
+                markup: Price::ZERO,
+                commission: charged,
+            },
+        };
+        let back = decode(&encode(&record)).expect("a charged fill decodes");
+        let Event::OrderFilled { commission, .. } = back.event else {
+            panic!("expected a fill");
+        };
+        assert_eq!(commission, charged);
     }
 
     #[test]
@@ -2126,6 +2222,7 @@ mod tests {
                 price: Price::parse("147.500").unwrap(),
                 rate: Price::ONE,
                 markup,
+                commission: Money::ZERO,
             },
         };
         let back = decode(&encode(&record)).expect("a marked-up fill decodes");
@@ -2151,6 +2248,7 @@ mod tests {
                 price: Price::parse("147.500").unwrap(),
                 rate,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             },
         };
         let Event::OrderFilled { rate: back, .. } = decode(&encode(&record)).unwrap().event else {

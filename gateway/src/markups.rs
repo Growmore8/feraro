@@ -34,7 +34,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use domain::InstrumentId;
-use money::Price;
+use money::{Money, Price};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Stored {
@@ -45,6 +45,10 @@ struct Stored {
     /// holds that rule and a settings file is no exception.
     #[serde(default)]
     markups: BTreeMap<u32, String>,
+    /// Instrument id to commission per unit of quantity, as a decimal
+    /// string. Absent in a file written before the house charged one.
+    #[serde(default)]
+    commissions: BTreeMap<u32, String>,
 }
 
 /// The markup file, loaded into memory.
@@ -52,6 +56,7 @@ struct Stored {
 pub struct Markups {
     path: PathBuf,
     held: BTreeMap<InstrumentId, Price>,
+    charges: BTreeMap<InstrumentId, Money>,
 }
 
 impl Markups {
@@ -66,6 +71,7 @@ impl Markups {
                 .with_context(|| format!("reading {}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Stored {
                 markups: BTreeMap::new(),
+                commissions: BTreeMap::new(),
             },
             Err(e) => return Err(e).with_context(|| format!("opening {}", path.display())),
         };
@@ -85,9 +91,23 @@ impl Markups {
                 ),
             }
         }
+        let mut charges = BTreeMap::new();
+        for (id, text) in stored.commissions {
+            match Money::parse(text.trim()) {
+                Ok(amount) if amount > Money::ZERO => {
+                    charges.insert(InstrumentId(id), amount);
+                }
+                Ok(_) => {}
+                Err(_) => eprintln!(
+                    "markups: instrument {id} has an unreadable commission {text:?}; charging nothing"
+                ),
+            }
+        }
+
         Ok(Markups {
             path: path.to_path_buf(),
             held,
+            charges,
         })
     }
 
@@ -100,6 +120,11 @@ impl Markups {
                 .held
                 .iter()
                 .map(|(id, price)| (id.0, price.to_string()))
+                .collect(),
+            commissions: self
+                .charges
+                .iter()
+                .map(|(id, amount)| (id.0, amount.to_string()))
                 .collect(),
         };
         let text = serde_json::to_string_pretty(&stored)?;
@@ -115,6 +140,27 @@ impl Markups {
     /// What this instrument is marked up by, per side. Zero when none.
     pub fn of(&self, instrument: InstrumentId) -> Price {
         self.held.get(&instrument).copied().unwrap_or(Price::ZERO)
+    }
+
+    /// What this instrument charges to open, per unit. Zero when none.
+    pub fn commission_of(&self, instrument: InstrumentId) -> Money {
+        self.charges
+            .get(&instrument)
+            .copied()
+            .unwrap_or(Money::ZERO)
+    }
+
+    /// Sets the commission, or removes it when zero.
+    pub fn set_commission(&mut self, instrument: InstrumentId, per_unit: Money) -> Result<()> {
+        if per_unit < Money::ZERO {
+            bail!("a commission cannot be negative — the house does not pay the client to trade");
+        }
+        if per_unit == Money::ZERO {
+            self.charges.remove(&instrument);
+        } else {
+            self.charges.insert(instrument, per_unit);
+        }
+        self.save()
     }
 
     /// Everything set, for the desk to read.

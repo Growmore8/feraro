@@ -37,7 +37,7 @@ use anyhow::{Context, Result};
 use domain::{AccountId, Event, InstrumentId, OrderId, OrderType, RejectReason, Timestamp, UserId};
 use journal::{Durability, Replay, SegmentedJournal};
 use ledger::Ledger;
-use money::{Price, Qty, Side};
+use money::{Money, Price, Qty, Side};
 use pending::{Activation, PendingBook};
 use risk::{InstrumentTerms, MarginPolicy, Portfolio, ProposedOrder};
 use rollover::{RolloverError, SwapTerms};
@@ -122,6 +122,13 @@ pub enum Command {
         /// holds journaled facts, not settings. Zero passes the feed's
         /// price through untouched.
         markup: Price,
+        /// What opening one unit of this instrument costs in commission.
+        ///
+        /// Arrives with the price for the same reason the markup does: a
+        /// resting order fills hours after it was placed and should be
+        /// charged what the instrument charges *then*, read from the same
+        /// place a market order reads.
+        commission: Money,
     },
     /// A terminal wants to trade.
     ///
@@ -408,7 +415,7 @@ fn statement_entry(
             account,
             "withdrawal",
             None,
-            amount.neg().unwrap_or(money::Money::ZERO),
+            amount.neg().unwrap_or(Money::ZERO),
         ),
         Event::CreditSet { account, .. } => {
             let moved = applied.credit_moved.map(|(_, m)| m)?;
@@ -450,7 +457,7 @@ fn statement_entry(
                 account,
                 "trade",
                 Some(order.0),
-                realised.total().unwrap_or(money::Money::ZERO),
+                realised.total().unwrap_or(Money::ZERO),
             )
         }
         Event::PositionClosed { account, order, .. } => {
@@ -459,7 +466,7 @@ fn statement_entry(
                 account,
                 "trade",
                 Some(order.0),
-                realised.total().unwrap_or(money::Money::ZERO),
+                realised.total().unwrap_or(Money::ZERO),
             )
         }
         Event::PositionStoppedOut { account, order, .. } => {
@@ -468,7 +475,7 @@ fn statement_entry(
                 account,
                 "stopOut",
                 Some(order.0),
-                realised.total().unwrap_or(money::Money::ZERO),
+                realised.total().unwrap_or(Money::ZERO),
             )
         }
         Event::ProtectionTriggered {
@@ -482,7 +489,7 @@ fn statement_entry(
                 account,
                 if stop_loss { "stopLoss" } else { "takeProfit" },
                 Some(order.0),
-                realised.total().unwrap_or(money::Money::ZERO),
+                realised.total().unwrap_or(Money::ZERO),
             )
         }
         _ => return None,
@@ -490,7 +497,7 @@ fn statement_entry(
 
     let balance = portfolio
         .account(account)
-        .map_or(money::Money::ZERO, |a| a.balance);
+        .map_or(Money::ZERO, |a| a.balance);
     Some((
         account,
         StatementDto {
@@ -516,6 +523,18 @@ fn price_on_tick(price: Price, tick: Price) -> bool {
 /// restart rebuilds are the books that were live. The journal sequence is the
 /// transaction id: unique, never reused, and already the order things
 /// happened in.
+/// What a fill of this size costs to open.
+///
+/// The rate is per unit of quantity, so this is a multiplication — done as
+/// a ratio in integers, like every other figure that reaches a balance.
+fn commission_on(market: &risk::Market, instrument: InstrumentId, qty: Qty) -> Result<Money> {
+    let per_unit = market.commission_of(instrument);
+    if per_unit.is_zero() {
+        return Ok(Money::ZERO);
+    }
+    Ok(per_unit.mul_ratio(i128::from(qty.raw()), i128::from(money::QTY_ONE))?)
+}
+
 fn post_to_books(
     ledger: &mut Ledger,
     portfolio: &Portfolio,
@@ -532,6 +551,14 @@ fn post_to_books(
     let id = TxId(record.seq.0);
 
     let tx = match record.event {
+        // Opening a position moves no cash — margin is posted, not paid —
+        // so a fill reaches the books only when it charged something.
+        Event::OrderFilled {
+            order, commission, ..
+        } if !commission.is_zero() => portfolio
+            .owner_of_order(order)
+            .map(|who| ledger::commission(id, record.at, who, currency_of(who), commission))
+            .transpose()?,
         Event::FundsDeposited {
             account, amount, ..
         } => Some(ledger::deposit(
@@ -1266,7 +1293,8 @@ impl Engine {
                 ask,
                 source,
                 markup,
-            } => self.on_quote(instrument, bid, ask, source, markup),
+                commission,
+            } => self.on_quote(instrument, bid, ask, source, markup, commission),
             Command::Place {
                 by,
                 account,
@@ -1285,6 +1313,10 @@ impl Engine {
                     kind,
                     qty,
                     price,
+                    // Admission has to afford the commission too: an order
+                    // whose margin fits but whose charge does not would
+                    // open and leave the balance short.
+                    commission: commission_on(&self.portfolio.market, instrument, qty)?,
                 },
                 limit_price,
             ),
@@ -1439,6 +1471,7 @@ impl Engine {
         ask: Price,
         source: Source,
         markup: Price,
+        commission: Money,
     ) -> Result<()> {
         if self.quote_source.get(&instrument) != Some(&source) {
             // Attribution for every fill that follows: the most recent change
@@ -1453,6 +1486,7 @@ impl Engine {
         self.portfolio
             .market
             .quote_marked(instrument, bid, ask, markup);
+        self.portfolio.market.charge(instrument, commission);
 
         // From here on, the client's price. Reading it back rather than
         // recomputing it means there is exactly one place the widening
@@ -1542,6 +1576,11 @@ impl Engine {
                         kind: OrderType::Market,
                         qty: order.qty,
                         price: Price::ZERO,
+                        commission: commission_on(
+                            &self.portfolio.market,
+                            order.instrument,
+                            order.qty,
+                        )?,
                     };
 
                     if let Err(reason) =
@@ -1587,6 +1626,11 @@ impl Engine {
                         // like everything else, so it earns the same
                         // markup a market order would have.
                         markup: self.portfolio.market.markup_of(order.instrument),
+                        commission: commission_on(
+                            &self.portfolio.market,
+                            order.instrument,
+                            order.qty,
+                        )?,
                     })?;
                     self.announce_to(
                         order.account,
@@ -1940,6 +1984,10 @@ impl Engine {
             kind,
             qty,
             price,
+            // Read from the market at the fill, not from the proposal: a
+            // resting order placed this morning is charged what the
+            // instrument charges when it triggers.
+            commission: _,
         } = proposed;
 
         if self.portfolio.account(account).is_none() {
@@ -2079,6 +2127,9 @@ impl Engine {
             // it — the client paid it — so this is the record, not a
             // second charge.
             markup: self.portfolio.market.markup_of(instrument),
+            // Commission is the opposite of the markup: it leaves the
+            // balance now rather than being inside the price.
+            commission: commission_on(&self.portfolio.market, instrument, qty)?,
         })?;
 
         self.announce_to(
@@ -2245,6 +2296,10 @@ impl Engine {
                 kind: OrderType::Market,
                 qty,
                 price: Price::ZERO,
+                // Closing is charged like any other fill — a broker that
+                // charges to open and not to close is a broker with half a
+                // commission model.
+                commission: commission_on(&self.portfolio.market, instrument, qty)?,
             },
             Price::ZERO,
         )
@@ -2348,7 +2403,7 @@ impl Engine {
                     order,
                     amount,
                 })?;
-                let running = totals.entry(account).or_insert(money::Money::ZERO);
+                let running = totals.entry(account).or_insert(Money::ZERO);
                 *running = running.add(amount)?;
             }
             self.emit(Event::RolloverCompleted { day })?;
@@ -2361,7 +2416,7 @@ impl Engine {
                 .filter(|id| self.portfolio.account(*id).is_some_and(|a| !a.is_flat()))
                 .collect();
             for account in holders {
-                let total = totals.get(&account).copied().unwrap_or(money::Money::ZERO);
+                let total = totals.get(&account).copied().unwrap_or(Money::ZERO);
                 self.announce_to(
                     account,
                     ServerMessage::Rollover {
@@ -2392,7 +2447,7 @@ impl Engine {
 
         let event = match action {
             AdminAction::Deposit(amount) => {
-                if amount <= money::Money::ZERO {
+                if amount <= Money::ZERO {
                     return Ok(AdminOutcome::Refused("a deposit must be positive"));
                 }
                 Event::FundsDeposited {
@@ -2402,7 +2457,7 @@ impl Engine {
                 }
             }
             AdminAction::Withdraw(amount) => {
-                if amount <= money::Money::ZERO {
+                if amount <= Money::ZERO {
                     return Ok(AdminOutcome::Refused("a withdrawal must be positive"));
                 }
                 // Free margin, not balance: paying out money that is holding
@@ -2413,7 +2468,7 @@ impl Engine {
                     .account(account)
                     .map(|a| a.free_margin(&self.portfolio.market, self.policy))
                     .transpose()?
-                    .unwrap_or(money::Money::ZERO);
+                    .unwrap_or(Money::ZERO);
                 if amount > free {
                     return Ok(AdminOutcome::Refused(
                         "more than the account's free margin — close positions first",
@@ -2626,10 +2681,7 @@ impl Engine {
                 // An unquoted market is not a reason to show no book: the
                 // balance is known even when equity is not.
                 equity: money_str(a.equity(market).unwrap_or(a.balance)),
-                used_margin: money_str(
-                    a.used_margin(market, self.policy)
-                        .unwrap_or(money::Money::ZERO),
-                ),
+                used_margin: money_str(a.used_margin(market, self.policy).unwrap_or(Money::ZERO)),
                 margin_level_bp: a.margin_level_bp(market, self.policy).unwrap_or(None),
                 hedging: a.hedging,
                 live: a.live,
@@ -2781,7 +2833,7 @@ impl Engine {
                 let current = market.close_price(instrument, lot.side);
                 let profit = match current {
                     Some(c) => money::pnl(lot.side, lot.open_price, c, lot.qty)?,
-                    None => money::Money::ZERO,
+                    None => Money::ZERO,
                 };
                 positions.push(PositionDto {
                     ticket: lot.ticket.0,
@@ -2912,11 +2964,25 @@ mod tests {
             ask: p("80000.01"),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         let now = e.last_sync + Duration::from_secs(1);
         e.commit_at(now).unwrap();
         (e, rx)
+    }
+
+    /// Quotes BTC with a markup and a commission in force.
+    fn priced(e: &mut Engine, markup: &str, commission: &str) {
+        e.handle(Command::Quote {
+            instrument: BTC,
+            bid: p("80000.00"),
+            ask: p("80000.01"),
+            source: Source::BINANCE,
+            markup: p(markup),
+            commission: money::Money::parse(commission).unwrap(),
+        })
+        .unwrap();
     }
 
     /// Every message waiting, whoever it was addressed to.
@@ -2940,6 +3006,21 @@ mod tests {
             }
         }
         out
+    }
+
+    /// A market order of a chosen size, for the tests that care about size.
+    fn place(e: &mut Engine, side: Side, qty: money::Qty) {
+        e.handle(Command::Place {
+            by: TRADER_USER,
+            limit_price: Price::ZERO,
+            account: TRADER,
+            instrument: BTC,
+            side,
+            kind: OrderType::Market,
+            qty,
+            price: Price::ZERO,
+        })
+        .unwrap();
     }
 
     fn market_buy() -> Command {
@@ -3029,6 +3110,7 @@ mod tests {
             ask: p("2600.01"),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         e.handle(Command::Flush).unwrap();
@@ -3134,10 +3216,7 @@ mod tests {
         let t = next_rollover(&e);
         e.run_rollovers_at(t).unwrap();
         let after_first = btc_swap(&e);
-        assert!(
-            after_first < money::Money::ZERO,
-            "a long in crypto pays financing"
-        );
+        assert!(after_first < Money::ZERO, "a long in crypto pays financing");
 
         // One BTC near 80,000 at −10% a year is roughly −21.92 a night. The
         // live price moves, so assert a band — in raw integers, not floats.
@@ -3288,6 +3367,7 @@ mod tests {
             ask: p("80010.01"),
             source: Source::KRAKEN,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         drain(&mut rx);
@@ -3313,6 +3393,7 @@ mod tests {
                 ask: p(&format!("8000{i}.01")),
                 source: Source::BINANCE,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             })
             .unwrap();
         }
@@ -3324,6 +3405,7 @@ mod tests {
             ask: p("80000.01"),
             source: Source::KRAKEN,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         let after_switch = e.journal.next_seq().0 - before.0;
@@ -3347,6 +3429,7 @@ mod tests {
             ask: p("147.508"),
             source: Source::TWELVE_DATA,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
     }
@@ -3420,6 +3503,7 @@ mod tests {
             ask: p("148.508"),
             source: Source::TWELVE_DATA,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         let ticket = e.portfolio.account(TRADER).unwrap().lots(USDJPY)[0].ticket;
@@ -3538,6 +3622,7 @@ mod tests {
             ask: p("80100.01"),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         e.handle(Command::Flush).unwrap();
@@ -3660,6 +3745,7 @@ mod tests {
             ask: p("78999.00"),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -3719,7 +3805,7 @@ mod tests {
         // separates them is only their own money.
         if let Some(a) = e.portfolio.account_mut(SECOND) {
             a.balance = money::Money::parse("10.00").unwrap();
-            a.credit = money::Money::ZERO;
+            a.credit = Money::ZERO;
         }
         e.commit_at(e.last_sync).unwrap();
         drain(&mut rx);
@@ -3730,6 +3816,7 @@ mod tests {
             ask: p("79000.01"),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -3770,6 +3857,7 @@ mod tests {
             ask: p(ask),
             source: Source::BINANCE,
             markup: Price::ZERO,
+            commission: Money::ZERO,
         })
         .unwrap();
     }
@@ -4672,7 +4760,7 @@ mod tests {
             one_side.to_display_string(2).unwrap()
         );
         assert!(
-            hedged > money::Money::ZERO,
+            hedged > Money::ZERO,
             "and not nothing: both legs still cross a spread to close"
         );
     }
@@ -4892,10 +4980,7 @@ mod tests {
                 .unwrap(),
             "-12.50"
         );
-        assert_eq!(
-            house(&e, ledger::AccountKind::RealisedPnl),
-            money::Money::ZERO
-        );
+        assert_eq!(house(&e, ledger::AccountKind::RealisedPnl), Money::ZERO);
     }
 
     #[test]
@@ -5122,6 +5207,80 @@ mod tests {
     }
 
     /// The two things that must always be true of the books.
+    #[test]
+    fn commission_leaves_the_balance_and_lands_in_the_house_book() {
+        let s = Scratch::new("commission");
+        let (mut e, _rx) = engine(&s.0);
+        priced(&mut e, "0", "2.50");
+
+        let before = balance_of(&e, TRADER);
+        place(&mut e, Side::Buy, q("1"));
+
+        // One unit at 2.50 a unit.
+        let after = balance_of(&e, TRADER);
+        assert_ne!(before, after, "the charge left the balance");
+        let moved = money::Money::parse(&before)
+            .unwrap()
+            .sub(money::Money::parse(&after).unwrap())
+            .unwrap();
+        assert_eq!(moved.to_display_string(2).unwrap(), "2.50");
+
+        // And it is in the books, not merely missing from the balance.
+        books_agree(&e);
+    }
+
+    #[test]
+    fn commission_scales_with_size() {
+        let s = Scratch::new("commission-size");
+        let (mut e, _rx) = engine(&s.0);
+        priced(&mut e, "0", "2.50");
+
+        let before = balance_of(&e, TRADER);
+        place(&mut e, Side::Buy, q("0.40"));
+        let after = balance_of(&e, TRADER);
+        let moved = money::Money::parse(&before)
+            .unwrap()
+            .sub(money::Money::parse(&after).unwrap())
+            .unwrap();
+        assert_eq!(moved.to_display_string(2).unwrap(), "1.00");
+        books_agree(&e);
+    }
+
+    #[test]
+    fn no_commission_takes_nothing() {
+        let s = Scratch::new("commission-none");
+        let (mut e, _rx) = engine(&s.0);
+        priced(&mut e, "0", "0");
+
+        let before = balance_of(&e, TRADER);
+        place(&mut e, Side::Buy, q("1"));
+        assert_eq!(
+            balance_of(&e, TRADER),
+            before,
+            "nothing charged, nothing taken"
+        );
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_charged_fill_replays_to_the_same_balance() {
+        // The whole point of carrying it on the event: a restart must not
+        // give the money back.
+        let s = Scratch::new("commission-replay");
+        let after = {
+            let (mut e, _rx) = engine(&s.0);
+            priced(&mut e, "0", "2.50");
+            place(&mut e, Side::Buy, q("1"));
+            let now = e.last_sync + Duration::from_secs(1);
+            e.commit_at(now).unwrap();
+            balance_of(&e, TRADER)
+        };
+
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(balance_of(&again, TRADER), after, "replay charged it once");
+        books_agree(&again);
+    }
+
     fn books_agree(e: &Engine) {
         e.ledger
             .assert_balanced()
@@ -5174,10 +5333,7 @@ mod tests {
         e.handle(market_buy()).unwrap();
         books_agree(&e);
         // Opening realises nothing, so the books have not moved.
-        assert_eq!(
-            house(&e, ledger::AccountKind::RealisedPnl),
-            money::Money::ZERO
-        );
+        assert_eq!(house(&e, ledger::AccountKind::RealisedPnl), Money::ZERO);
 
         // The market rises and the position is closed at a profit.
         tick(&mut e, "81000.00", "81000.01");
@@ -5239,7 +5395,7 @@ mod tests {
         // And the price loss — the spread — is in the trading book, not mixed
         // in with the financing.
         let trading = house(&e, ledger::AccountKind::RealisedPnl);
-        assert!(trading > money::Money::ZERO, "the spread is the house's");
+        assert!(trading > Money::ZERO, "the spread is the house's");
         assert!(trading < m("1.00"));
     }
 
@@ -5282,7 +5438,7 @@ mod tests {
             "all the cash can go"
         );
         books_agree(&e);
-        assert_eq!(cash(&e, TRADER), money::Money::ZERO);
+        assert_eq!(cash(&e, TRADER), Money::ZERO);
         assert_eq!(
             bonus(&e, TRADER).to_display_string(2).unwrap(),
             "500.00",
@@ -5678,6 +5834,7 @@ mod tests {
                 ask: p("148.508"),
                 source: Source::TWELVE_DATA,
                 markup: Price::ZERO,
+                commission: Money::ZERO,
             })
             .unwrap();
             let ticket = e.portfolio.account(TRADER).unwrap().lots(USDJPY)[0].ticket;

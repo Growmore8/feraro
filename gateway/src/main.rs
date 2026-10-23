@@ -402,16 +402,20 @@ fn spawn_feeds(commands: mpsc::Sender<Command>, pulse: Arc<Pulse>, markups: Arc<
                     // Read per tick rather than cached, so a markup the
                     // desk changes takes effect on the next price rather
                     // than on the next restart.
-                    let markup = markups
-                        .lock()
-                        .expect("the markup lock")
-                        .of(quote.instrument);
+                    let (markup, commission) = {
+                        let held = markups.lock().expect("the markup lock");
+                        (
+                            held.of(quote.instrument),
+                            held.commission_of(quote.instrument),
+                        )
+                    };
                     let _ = commands.try_send(Command::Quote {
                         instrument: quote.instrument,
                         bid: quote.bid,
                         ask: quote.ask,
                         source: quote.source,
                         markup,
+                        commission,
                     });
                 }
                 Ok(None) => {}
@@ -938,6 +942,7 @@ async fn session(
                             | ClientMessage::AdminSettleDeposit { .. }
                             | ClientMessage::Markups
                             | ClientMessage::AdminSetMarkup { .. }
+                            | ClientMessage::AdminSetCommission { .. }
                             | ClientMessage::AdminSetPassword { .. }) => {
                                 if let Some(detail) = desk_refusal(session, &admin_message) {
                                     send(&mut sink, &ServerMessage::Unauthorized { detail }).await?;
@@ -1199,7 +1204,7 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         // What every client is quoted is the platform's pricing. A manager
         // reads it — they are asked why a spread is what it is — but does
         // not set it.
-        ClientMessage::AdminSetMarkup { .. } => {
+        ClientMessage::AdminSetMarkup { .. } | ClientMessage::AdminSetCommission { .. } => {
             Some("only an administrator may change what the house charges")
         }
         // Confirming money arrived credits an account, which is the same
@@ -1623,9 +1628,19 @@ async fn administer(
             // Copied out and the lock dropped before anything else: a
             // guard held across an await is a future that cannot be sent
             // between threads, and tokio says so at compile time.
-            let set: std::collections::BTreeMap<u32, money::Price> = {
+            let (set, charged) = {
                 let held = gate.markups.lock().expect("the markup lock");
-                held.all().map(|(id, p)| (id.0, p)).collect()
+                let marks: std::collections::BTreeMap<u32, money::Price> =
+                    held.all().map(|(id, p)| (id.0, p)).collect();
+                let charges: std::collections::BTreeMap<u32, money::Money> =
+                    instruments::catalogue()
+                        .iter()
+                        .map(|l| {
+                            let id = l.terms.instrument.id;
+                            (id.0, held.commission_of(id))
+                        })
+                        .collect();
+                (marks, charges)
             };
 
             // Every listed instrument, not only the marked-up ones: the
@@ -1640,6 +1655,11 @@ async fn administer(
                         instrument: id.0,
                         symbol: listing.terms.instrument.symbol.to_string(),
                         markup: markup.to_string(),
+                        commission: charged
+                            .get(&id.0)
+                            .copied()
+                            .unwrap_or(money::Money::ZERO)
+                            .to_string(),
                         spread: None,
                     }
                 })
@@ -1667,6 +1687,39 @@ async fn administer(
                     } else {
                         format!(
                             "Instrument {instrument} is marked up {price} a side - the spread a client sees widens by twice that. It takes effect on the next tick."
+                        )
+                    },
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::AdminSetCommission {
+            instrument,
+            commission,
+        } => {
+            let Ok(amount) = money::Money::parse(commission.trim()) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("{commission:?} is not an amount I can charge."),
+                });
+            };
+            let set = gate
+                .markups
+                .lock()
+                .expect("the markup lock")
+                .set_commission(domain::InstrumentId(instrument), amount);
+            Ok(match set {
+                Ok(()) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: if amount == money::Money::ZERO {
+                        format!("Instrument {instrument} is traded without commission.")
+                    } else {
+                        format!(
+                            "Instrument {instrument} charges {amount} a unit, on opening and on closing. It takes effect on the next tick."
                         )
                     },
                 },
