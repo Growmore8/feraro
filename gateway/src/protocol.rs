@@ -132,6 +132,49 @@ pub enum ClientMessage {
         #[serde(default)]
         reference: String,
     },
+    /// Client: "Please send me this much, to one of my saved places."
+    ///
+    /// Also a request, not a payment: the money leaves when the desk has
+    /// sent it and says so.
+    #[serde(rename_all = "camelCase")]
+    WithdrawalRequested {
+        /// One of the client's own payout methods.
+        payout: u64,
+        amount: String,
+        #[serde(default)]
+        note: String,
+    },
+    /// Where this client's money may be sent.
+    PayoutMethods,
+    /// Client: save somewhere to be paid. A null id adds a new one.
+    #[serde(rename_all = "camelCase")]
+    SavePayoutMethod {
+        #[serde(default)]
+        id: Option<u64>,
+        rail: String,
+        label: String,
+        address: String,
+        #[serde(default)]
+        note: String,
+        #[serde(default)]
+        preferred: bool,
+    },
+    /// Client: forget one nothing has been sent to.
+    #[serde(rename_all = "camelCase")]
+    ForgetPayoutMethod { id: u64 },
+    /// Administrator: move money on an account without the client asking —
+    /// a bonus granted, insurance set aside, either taken back.
+    ///
+    /// It joins the same queue so that every movement is approved the same
+    /// way and appears in one place.
+    #[serde(rename_all = "camelCase")]
+    AdminRaise {
+        kind: String,
+        account: u64,
+        amount: String,
+        #[serde(default)]
+        note: String,
+    },
     /// Administrator: add a way to pay, or change one. A null id adds.
     #[serde(rename_all = "camelCase")]
     AdminPutPaymentMethod {
@@ -157,6 +200,17 @@ pub enum ClientMessage {
     /// Administrator: what opening one unit costs. Zero removes it.
     #[serde(rename_all = "camelCase")]
     AdminSetCommission { instrument: u32, commission: String },
+    /// Desk: approve or refuse any request in the queue.
+    ///
+    /// Named for what it is now that the queue holds more than deposits:
+    /// a decision on a request, whatever kind it is.
+    #[serde(rename_all = "camelCase")]
+    AdminSettle {
+        id: u64,
+        approve: bool,
+        #[serde(default)]
+        detail: String,
+    },
     /// Desk: "I have looked, and the money is there" — or it is not.
     ///
     /// Crediting is a separate, journaled deposit. This only closes the
@@ -444,6 +498,11 @@ pub struct PaymentMethodDto {
 #[serde(rename_all = "camelCase")]
 pub struct DepositRequestDto {
     pub id: u64,
+    /// `deposit`, `withdrawal`, `bonusIn`, `bonusOut`, `insuranceIn` or
+    /// `insuranceOut`.
+    pub kind: &'static str,
+    /// Which pot it moves: `balance`, `bonus` or `insurance`.
+    pub pot: &'static str,
     pub account: u64,
     pub user: u64,
     /// Their login, joined by the session.
@@ -461,6 +520,18 @@ pub struct DepositRequestDto {
     pub stage: &'static str,
     pub settled_by: Option<u64>,
     pub detail: String,
+}
+
+/// Where one client wants money sent.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayoutMethodDto {
+    pub id: u64,
+    pub rail: &'static str,
+    pub label: String,
+    pub address: String,
+    pub note: String,
+    pub preferred: bool,
 }
 
 /// One line of an account statement: money in, money out, and what it left.
@@ -713,9 +784,12 @@ pub enum ServerMessage {
     /// What the house adds to each price.
     #[serde(rename_all = "camelCase")]
     Markups { markups: Vec<MarkupDto> },
-    /// Desk: the deposit claims, newest first.
+    /// Desk: everything waiting, newest first.
     #[serde(rename_all = "camelCase")]
     DepositRequests { requests: Vec<DepositRequestDto> },
+    /// Where this client's money may be sent.
+    #[serde(rename_all = "camelCase")]
+    PayoutMethods { payouts: Vec<PayoutMethodDto> },
     /// Administrator: the audit trail, newest first.
     #[serde(rename_all = "camelCase")]
     AdminAudit { entries: Vec<AuditDto> },

@@ -45,7 +45,7 @@ use crate::markups::Markups;
 use crate::payments::{Payments, Rail};
 use crate::protocol::{
     instrument_id, kind_from, price_str, side_from, AccountSummaryDto, AdminUserDto, BarDto,
-    ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, ServerMessage,
+    ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, PayoutMethodDto, ServerMessage,
 };
 
 /// The most audit lines the gateway will send in one answer.
@@ -753,14 +753,15 @@ async fn session(
                             ClientMessage::DepositRequested { method, amount, reference } => {
                                 let raised = {
                                     let mut pay = gate.payments.lock().expect("the payment lock");
-                                    pay.raise(
-                                        session.selected,
-                                        session.user,
+                                    pay.raise(payments::Asked {
+                                        kind: payments::Kind::Deposit,
+                                        account: session.selected,
+                                        user: session.user,
                                         method,
-                                        &amount,
-                                        &reference,
-                                        now_ms(),
-                                    )
+                                        amount: &amount,
+                                        reference: &reference,
+                                        at: now_ms(),
+                                    })
                                 };
                                 let reply = match raised {
                                     Ok(id) => ServerMessage::AdminResult {
@@ -775,6 +776,78 @@ async fn session(
                                         detail: format!("Refused: {why}"),
                                     },
                                 };
+                                send(&mut sink, &reply).await?;
+                                send(&mut sink, &payment_methods(&gate, session)).await?;
+                            }
+                            ClientMessage::PayoutMethods => {
+                                let payouts = {
+                                    let pay = gate.payments.lock().expect("the payment lock");
+                                    pay.payouts_of(session.user)
+                                        .into_iter()
+                                        .map(describe_payout)
+                                        .collect()
+                                };
+                                send(&mut sink, &ServerMessage::PayoutMethods { payouts }).await?;
+                            }
+                            ClientMessage::SavePayoutMethod {
+                                id, rail, label, address, note, preferred,
+                            } => {
+                                let reply = match payments::Rail::parse(&rail) {
+                                    None => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: "Not a way of being paid that I know.".to_owned(),
+                                    },
+                                    Some(rail) => {
+                                        let saved = gate
+                                            .payments
+                                            .lock()
+                                            .expect("the payment lock")
+                                            .put_payout(payments::Saving {
+                                                id,
+                                                user: session.user,
+                                                rail,
+                                                label: &label,
+                                                address: &address,
+                                                note: &note,
+                                                preferred,
+                                            });
+                                        match saved {
+                                            Ok(id) => ServerMessage::AdminResult {
+                                                done: true,
+                                                detail: format!("Saved {label} as payout {id}."),
+                                            },
+                                            Err(why) => ServerMessage::AdminResult {
+                                                done: false,
+                                                detail: format!("Refused: {why}"),
+                                            },
+                                        }
+                                    }
+                                };
+                                send(&mut sink, &reply).await?;
+                            }
+                            ClientMessage::ForgetPayoutMethod { id } => {
+                                let gone = gate
+                                    .payments
+                                    .lock()
+                                    .expect("the payment lock")
+                                    .forget_payout(id, session.user);
+                                let reply = match gone {
+                                    Ok(()) => ServerMessage::AdminResult {
+                                        done: true,
+                                        detail: format!("Forgot payout {id}."),
+                                    },
+                                    Err(why) => ServerMessage::AdminResult {
+                                        done: false,
+                                        detail: format!("Refused: {why}"),
+                                    },
+                                };
+                                send(&mut sink, &reply).await?;
+                            }
+                            ClientMessage::WithdrawalRequested { payout, amount, note } => {
+                                let reply = ask_to_withdraw(
+                                    &gate, session, payout, &amount, &note, &commands,
+                                )
+                                .await?;
                                 send(&mut sink, &reply).await?;
                                 send(&mut sink, &payment_methods(&gate, session)).await?;
                             }
@@ -940,6 +1013,8 @@ async fn session(
                             | ClientMessage::AdminRemovePaymentMethod { .. }
                             | ClientMessage::AdminDepositRequests
                             | ClientMessage::AdminSettleDeposit { .. }
+                            | ClientMessage::AdminSettle { .. }
+                            | ClientMessage::AdminRaise { .. }
                             | ClientMessage::Markups
                             | ClientMessage::AdminSetMarkup { .. }
                             | ClientMessage::AdminSetCommission { .. }
@@ -1111,6 +1186,153 @@ async fn resume(
     .await
 }
 
+/// Approves or refuses one request, and applies it.
+///
+/// # The order matters
+///
+/// The request is settled **first**, and only then is the money moved. A
+/// request can leave `pending` exactly once, so a double click cannot pay
+/// twice — which is the failure that costs real money. The opposite order
+/// would move the money and then try to record it, and a crash in between
+/// would leave a paid-out withdrawal still sitting in the queue.
+///
+/// The cost of this order is the rarer failure: if the engine refuses the
+/// movement after the request is closed, the request says approved and the
+/// account was not touched. That case is reported in those words, telling
+/// the operator exactly what to do by hand, rather than being hidden
+/// behind a success.
+async fn settle(
+    gate: &Gate,
+    session: &Signed,
+    commands: &mpsc::Sender<Command>,
+    id: u64,
+    approve: bool,
+    detail: &str,
+) -> Result<ServerMessage> {
+    let settled =
+        gate.payments
+            .lock()
+            .expect("the payment lock")
+            .settle(id, session.user, approve, detail);
+
+    let request = match settled {
+        Ok(r) => r,
+        Err(why) => {
+            return Ok(ServerMessage::AdminResult {
+                done: false,
+                detail: format!("Refused: {why}"),
+            })
+        }
+    };
+
+    if !approve {
+        return Ok(ServerMessage::AdminResult {
+            done: true,
+            detail: format!(
+                "{} {id} refused. The client is told.",
+                request.kind.as_str()
+            ),
+        });
+    }
+
+    let Ok(amount) = money::Money::parse(request.amount.trim()) else {
+        return Ok(ServerMessage::AdminResult {
+            done: false,
+            detail: format!(
+                "The request says {} and that is not an amount I can apply. Do it by hand.",
+                request.amount
+            ),
+        });
+    };
+
+    // What approving each kind actually does to the account. Bonus moves
+    // the credit pot as a delta — the operator asked for *more* or *less*,
+    // not for a new absolute figure — so the current one is read first.
+    let action = match request.kind {
+        payments::Kind::Deposit => AdminAction::Deposit(amount),
+        payments::Kind::Withdrawal => AdminAction::Withdraw(amount),
+        payments::Kind::BonusIn | payments::Kind::BonusOut => {
+            let now = snapshot_of(AccountId(request.account), commands)
+                .await
+                .and_then(|m| match m {
+                    ServerMessage::Snapshot { account, .. } => {
+                        money::Money::parse(&account.credit).ok()
+                    }
+                    _ => None,
+                })
+                .unwrap_or(money::Money::ZERO);
+            let next = if request.kind == payments::Kind::BonusIn {
+                now.add(amount)
+            } else {
+                now.sub(amount)
+            };
+            match next {
+                Ok(v) if v >= money::Money::ZERO => AdminAction::SetCredit(v),
+                Ok(_) => {
+                    return Ok(ServerMessage::AdminResult {
+                        done: false,
+                        detail: format!(
+                            "Request {id} is marked approved but {} is more bonus than account {} has. Nothing was changed.",
+                            request.amount, request.account
+                        ),
+                    })
+                }
+                Err(_) => {
+                    return Ok(ServerMessage::AdminResult {
+                        done: false,
+                        detail: format!("Request {id} is marked approved but the figures would not add up. Nothing was changed."),
+                    })
+                }
+            }
+        }
+        payments::Kind::InsuranceIn | payments::Kind::InsuranceOut => {
+            return Ok(ServerMessage::AdminResult {
+                done: false,
+                detail: format!(
+                    "Request {id} is marked approved, but this platform has no insurance pot yet, so nothing was moved. It is recorded; apply it by hand or wait for the feature."
+                ),
+            })
+        }
+    };
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    commands
+        .send(Command::Administer {
+            by: session.user,
+            account: AccountId(request.account),
+            action,
+            reply: reply_tx,
+        })
+        .await
+        .ok();
+
+    Ok(match reply_rx.await {
+        Ok(AdminOutcome::Done) => ServerMessage::AdminResult {
+            done: true,
+            detail: format!(
+                "{} {id} approved: {} on account {}.",
+                request.kind.as_str(),
+                request.amount,
+                request.account
+            ),
+        },
+        Ok(AdminOutcome::Refused(why)) => ServerMessage::AdminResult {
+            done: false,
+            detail: format!(
+                "Request {id} is marked approved but the engine refused it: {why}. Account {} was NOT changed — do it by hand.",
+                request.account
+            ),
+        },
+        Err(_) => ServerMessage::AdminResult {
+            done: false,
+            detail: format!(
+                "Request {id} is marked approved but the engine did not answer. Check account {} before trying again.",
+                request.account
+            ),
+        },
+    })
+}
+
 /// The ways to pay, as this session may see them.
 ///
 /// A client is shown only what is switched on, and only their own claims.
@@ -1132,6 +1354,102 @@ fn payment_methods(gate: &Gate, session: &Signed) -> ServerMessage {
         .collect();
 
     ServerMessage::PaymentMethods { methods, mine }
+}
+
+fn describe_payout(p: &payments::Payout) -> PayoutMethodDto {
+    PayoutMethodDto {
+        id: p.id,
+        rail: p.rail.as_str(),
+        label: p.label.clone(),
+        address: p.address.clone(),
+        note: p.note.clone(),
+        preferred: p.preferred,
+    }
+}
+
+/// A client asking to be paid out.
+///
+/// Three things are checked before it reaches the queue, and all three are
+/// refusals a client would rather hear now than after waiting a day:
+///
+/// * **A demo account has no money to send.** The figures in it are
+///   practice, and paying real money against them is the single worst
+///   thing this platform could do.
+/// * **Outstanding bonus is cleared first.** Bonus counts toward margin
+///   but is never withdrawable; letting it leave is how a broker pays out
+///   its own promotion.
+/// * **Only free margin may go.** Money holding an open position up is not
+///   the client's to take — withdrawing it would stop the position out.
+///
+/// What is *not* checked here is whether the desk wants to pay: that is
+/// the approval, and it is a person's decision.
+async fn ask_to_withdraw(
+    gate: &Gate,
+    session: &Signed,
+    payout: u64,
+    amount: &str,
+    note: &str,
+    commands: &mpsc::Sender<Command>,
+) -> Result<ServerMessage> {
+    let refuse = |why: String| ServerMessage::AdminResult {
+        done: false,
+        detail: format!("Refused: {why}"),
+    };
+
+    let Ok(wanted) = money::Money::parse(amount.trim()) else {
+        return Ok(refuse(format!("{amount:?} is not an amount.")));
+    };
+    if wanted <= money::Money::ZERO {
+        return Ok(refuse("say how much, as a positive amount.".to_owned()));
+    }
+
+    let Some(state) = snapshot_of(session.selected, commands).await else {
+        return Ok(refuse("that account is not answering.".to_owned()));
+    };
+    let ServerMessage::Snapshot { account, .. } = &state else {
+        return Ok(refuse("that account is not answering.".to_owned()));
+    };
+
+    if !account.live {
+        return Ok(refuse(
+            "a demo account holds no real money. There is nothing to send.".to_owned(),
+        ));
+    }
+    if money::Money::parse(&account.credit).is_ok_and(|c| c > money::Money::ZERO) {
+        return Ok(refuse(format!(
+            "clear the {} bonus on this account before withdrawing. A bonus counts toward margin but is not yours to take.",
+            account.credit
+        )));
+    }
+    let free = money::Money::parse(&account.free_margin).unwrap_or(money::Money::ZERO);
+    if wanted > free {
+        return Ok(refuse(format!(
+            "only {free} is free. The rest is holding your open positions up, and taking it would close them."
+        )));
+    }
+
+    let raised = gate
+        .payments
+        .lock()
+        .expect("the payment lock")
+        .raise(payments::Asked {
+            kind: payments::Kind::Withdrawal,
+            account: session.selected,
+            user: session.user,
+            method: payout,
+            amount,
+            reference: note,
+            at: now_ms(),
+        });
+    Ok(match raised {
+        Ok(id) => ServerMessage::AdminResult {
+            done: true,
+            detail: format!(
+                "Withdrawal {id} requested. The desk will send it and credit nothing until they have."
+            ),
+        },
+        Err(why) => refuse(why.to_string()),
+    })
 }
 
 fn describe_method(m: &payments::Method) -> PaymentMethodDto {
@@ -1157,8 +1475,22 @@ fn describe_request(
         user: r.user,
         login: users.by_id(UserId(r.user)).map(|u| u.login.clone()),
         method: r.method,
-        method_label: method.map(|m| m.label.clone()).unwrap_or_default(),
-        rail: method.map(|m| m.rail.as_str()).unwrap_or("bank"),
+        kind: r.kind.as_str(),
+        pot: r.kind.pot(),
+        method_label: match r.kind {
+            payments::Kind::Withdrawal => pay
+                .payout(r.method)
+                .map(|p| p.label.clone())
+                .unwrap_or_default(),
+            _ => method.map(|m| m.label.clone()).unwrap_or_default(),
+        },
+        rail: match r.kind {
+            payments::Kind::Withdrawal => pay
+                .payout(r.method)
+                .map(|p| p.rail.as_str())
+                .unwrap_or("bank"),
+            _ => method.map(|m| m.rail.as_str()).unwrap_or("bank"),
+        },
         amount: r.amount.clone(),
         reference: r.reference.clone(),
         at: r.at,
@@ -1210,6 +1542,14 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         // Confirming money arrived credits an account, which is the same
         // decision as a deposit and goes the same way.
         ClientMessage::AdminSettleDeposit { credit, .. } if *credit => {
+            Some("money and going live are an administrator's to decide")
+        }
+        // Approving anything that moves money, and granting a bonus or
+        // insurance in the first place, are an administrator's.
+        ClientMessage::AdminSettle { approve, .. } if *approve => {
+            Some("money and going live are an administrator's to decide")
+        }
+        ClientMessage::AdminRaise { .. } => {
             Some("money and going live are an administrator's to decide")
         }
         ClientMessage::AdminCreateUser { .. }
@@ -1729,6 +2069,80 @@ async fn administer(
                 },
             })
         }
+
+        ClientMessage::AdminRaise {
+            kind,
+            account,
+            amount,
+            note,
+        } => {
+            let Some(kind) = payments::Kind::parse(&kind) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: "Not a movement I know.".to_owned(),
+                });
+            };
+            if kind.client_may_ask() {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: "A deposit or a withdrawal is the client's to ask for. Use the account's own menu to move money directly.".to_owned(),
+                });
+            }
+            let owner = {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                commands
+                    .send(Command::Accounts {
+                        user: None,
+                        reply: reply_tx,
+                    })
+                    .await
+                    .ok();
+                reply_rx
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|a| a.id == account)
+                    .and_then(|a| a.owner)
+            };
+            let Some(owner) = owner else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Account {account} has no owner to credit."),
+                });
+            };
+            let raised = gate
+                .payments
+                .lock()
+                .expect("the payment lock")
+                .raise(payments::Asked {
+                    kind,
+                    account: AccountId(account),
+                    user: UserId(owner),
+                    method: 0,
+                    amount: &amount,
+                    reference: &note,
+                    at: now_ms(),
+                });
+            Ok(match raised {
+                Ok(id) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!(
+                        "{} of {amount} queued as request {id} on account {account}. Approve it to apply it.",
+                        kind.as_str()
+                    ),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::AdminSettle {
+            id,
+            approve,
+            detail,
+        } => settle(gate, session, commands, id, approve, &detail).await,
 
         ClientMessage::AdminDepositRequests => {
             let users = gate.users.lock().expect("the user store lock");
