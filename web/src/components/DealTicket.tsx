@@ -17,9 +17,9 @@
  * | sell | `SS` sell stop | `S` | `SL` sell limit |
  * | buy | `BL` buy limit | `B` | `BS` buy stop |
  *
- * Sell and buy keep the two colours they have everywhere else here — blue
- * for the bid side, red for the ask — and the arrows are colourless, because
- * they mean "down" and "up from here" rather than a direction to trade.
+ * Sell and buy keep the two colours they have everywhere else here — red
+ * for sell, blue for buy — and the arrows are colourless, because they mean
+ * "down" and "up from here" rather than a direction to trade.
  *
  * Nobody chooses the words. "Limit" and "stop" are the same intention seen
  * from opposite sides of the price, and a trader who has to work out which

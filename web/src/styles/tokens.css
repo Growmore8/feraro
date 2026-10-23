@@ -12,10 +12,13 @@
  *    contrast against a neutral field, and every desk platform lands on black
  *    for the same reason. The --chart-* tokens are a separate set on purpose.
  *
- * 2. SELL IS BLUE AND BUY IS RED, matching the reference platform. This is the
- *    opposite of MT4. It is one token pair — swap --buy and --sell below to
- *    flip the whole product — but it must never differ between the desktop,
- *    mobile and dealer screens, so it is defined once, here, and nowhere else.
+ * 2. SELL IS RED AND BUY IS BLUE, as Cubex has it and as MT4 has it. An
+ *    earlier reference ran the other way round and this followed it, which
+ *    meant a dealer moving between the two platforms read every button
+ *    backwards — the one mistake in this palette that costs money rather
+ *    than taste. It is one token pair, and it must never differ between the
+ *    desktop, mobile and dealer screens, so it is defined once, here, and
+ *    nowhere else.
  *
  * --accent is never a data colour. It marks what you can act on.
  */
@@ -90,10 +93,10 @@
   --accent-wash: #dceaf6;
 
   /* Direction — blue sell, red buy, as the reference platform runs it */
-  --buy: #c62828;
-  --buy-wash: #fbe4e4;
-  --sell: #1565c0;
-  --sell-wash: #dfeaf8;
+  --buy: #1565c0;
+  --buy-wash: #dfeaf8;
+  --sell: #c62828;
+  --sell-wash: #fbe4e4;
 
   /* Outcome — a separate question from which way the order faced */
   --profit: #1b8f3a;
@@ -170,10 +173,10 @@
   --accent-ink: #0e1418;
   --accent-wash: #12283a;
 
-  --buy: #e8635a;
-  --buy-wash: #3a2226;
-  --sell: #4c9be8;
-  --sell-wash: #16304a;
+  --buy: #4c9be8;
+  --buy-wash: #16304a;
+  --sell: #e8635a;
+  --sell-wash: #3a2226;
 
   --profit: #3fbf8f;
   --profit-wash: #122c23;

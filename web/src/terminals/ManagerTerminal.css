@@ -1212,3 +1212,153 @@
 }
 
 .mgr-nag:hover { color: var(--accent-ink); background: var(--warn); }
+
+
+/* ── Chart tabs, at the top ──
+
+   Cubex puts the open charts above the chart, which is where every browser
+   and every terminal puts tabs: the strip says what is open, then shows
+   the one that is. The old strip sat under the chart, where it read as a
+   status bar for the thing above it rather than a way to switch. */
+
+.mgr-head-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-head-tabs .symtab-pick {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.mgr-head-tabs .symtab.on .symtab-pick {
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom-color: var(--accent);
+}
+
+.mgr-head-tabs .symtab-pick:hover { color: var(--ink); }
+
+/* It says what it does, rather than a sentence telling somebody to go and
+   do it somewhere else. */
+.symtab-add {
+  margin-left: 4px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.symtab-add:hover {
+  color: var(--ink);
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+
+/* ── Live and demo, as two lists ──
+
+   Cubex splits the navigator this way and it is right: they are different
+   populations, and a demo account sitting in a list of live ones is a row
+   somebody has to re-read to be sure it is not real.
+
+   The live tab carries the weight, because that is the side where a
+   mistake costs money. */
+
+.mgr-side-tabs {
+  flex: none;
+  display: flex;
+  gap: 1px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mgr-side-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.mgr-side-tabs button:hover { color: var(--ink); }
+
+.mgr-side-tabs button.on {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+.mgr-side-count {
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-2);
+  background: var(--ground);
+  border-radius: 999px;
+}
+
+.mgr-side-tabs button.on .mgr-side-count {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+
+/* ── The menu bar ──
+
+   Beside the brand, where a menu bar goes. Everything in it was already
+   in the product and reachable only by right-clicking — a fine shortcut
+   and a poor way to find out something exists. The one menu that was here
+   before sat on the right next to Sign out, where it read as another
+   account control rather than as a menu. */
+
+.mgr-menubar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 14px;
+}
+
+.mgr-menu-top {
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.mgr-menu-top:hover { color: var(--ink); background: var(--ground); }
+
+@media (max-width: 1100px) {
+  /* The first thing to go on a narrow window: every one of these is also
+     a right-click away, so losing the bar loses discoverability rather
+     than capability. */
+  .mgr-menubar { display: none; }
+}

@@ -261,6 +261,14 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   }, [gw.activity])
 
   /** A read-only panel, when one has been opened from a menu. */
+  /**
+   * Which population the navigator is showing.
+   *
+   * Live first, because that is the one where a mistake costs money and
+   * so the one somebody should have to switch *away* from rather than
+   * towards.
+   */
+  const [side, setSide] = useState<'live' | 'demo'>('live')
   const [sheet, setSheet] = useState<
     'books' | 'payments' | 'pricing' | 'second' | null
   >(null)
@@ -446,7 +454,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
    */
   const tree = useMemo(() => {
     const byManager = new Map<string, AdminAccount[]>()
-    for (const a of matches) {
+    for (const a of matches.filter((a) => (side === 'live' ? a.live : !a.live))) {
       const owner = gw.users.find((u) => u.id === a.owner)
       const key = owner?.managerLogin ?? (owner?.role === 'manager' ? owner.login : null)
       byManager.set(key ?? UNASSIGNED, [...(byManager.get(key ?? UNASSIGNED) ?? []), a])
@@ -457,6 +465,9 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         live: held.filter((a) => a.live).sort((x, y) => x.id - y.id).map(decorate),
         demo: held.filter((a) => !a.live).sort((x, y) => x.id - y.id).map(decorate),
       }))
+      // A manager whose whole book is on the other side is not shown at
+      // all: a folder with nothing in it is a folder somebody opens.
+      .filter((f) => f.live.length + f.demo.length > 0)
       // Unassigned last: it is the exception, and exceptions read better at
       // the bottom of a list than at the top of one.
       .sort((x, y) =>
@@ -466,7 +477,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             ? -1
             : x.manager.localeCompare(y.manager),
       )
-  }, [matches, gw.users])
+  }, [matches, gw.users, side])
 
   const favourites = useMemo(
     () =>
@@ -1366,6 +1377,101 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
     ]
   }
 
+  /** What the New menu offers: the things that make a person or a chart. */
+  const newMenu = (): readonly MenuItem[] => {
+    const items: MenuItem[] = []
+    if (isAdmin) {
+      items.push(
+        { label: 'Client' + DOTS, icon: '\u25cb', onPick: () => setAsk(newPersonDialog('client')) },
+        { label: 'Manager' + DOTS, icon: '\u25c9', onPick: () => setAsk(newPersonDialog('manager')) },
+        '-',
+      )
+    }
+    items.push({
+      label: `Chart of ${instrument.symbol}`,
+      icon: '\u25a5',
+      onPick: () => openChart(instrument.id),
+    })
+    return items
+  }
+
+  /** What the Charts menu offers: the timeframe, and what is drawn on it. */
+  const chartsMenu = (): readonly MenuItem[] => [
+    {
+      label: 'Timeframe',
+      icon: '\u23f1',
+      hint: TF_LABEL[interval],
+      items: (Object.keys(TF_LABEL) as (keyof typeof TF_LABEL)[]).map((tf) => ({
+        label: TF_LABEL[tf],
+        checked: tf === interval,
+        onPick: () => setInterval(tf),
+      })),
+    },
+    '-',
+    ...charts.map((chart) => {
+      const inst = instruments.find((i) => i.id === chart.id)
+      return {
+        label: inst?.symbol ?? String(chart.id),
+        checked: chart.id === symbol,
+        hint: TF_LABEL[chart.interval],
+        onPick: () => setSymbol(chart.id),
+      }
+    }),
+  ]
+
+  /** What the Reports menu offers: the figures somebody is asked for. */
+  const reportsMenu = (): readonly MenuItem[] => {
+    const items: MenuItem[] = [
+      {
+        label: 'Statement for this account',
+        icon: '\u2630',
+        onPick: () => {
+          gw.requestStatement()
+          setTab('History')
+        },
+      },
+      {
+        label: 'Money waiting on the desk',
+        icon: '\u25c9',
+        hint: String(gw.deposits.filter((d) => d.stage === 'pending').length),
+        onPick: () => {
+          gw.adminDepositRequests()
+          setTab('Requests')
+        },
+      },
+    ]
+    if (isAdmin) {
+      items.push(
+        '-',
+        {
+          label: 'Audit trail',
+          icon: '\u25a4',
+          onPick: () => {
+            gw.adminAudit()
+            setTab('Audit')
+          },
+        },
+        {
+          label: 'Trial balance' + DOTS,
+          icon: '\u2696',
+          onPick: () => {
+            gw.adminBooks()
+            setSheet('books')
+          },
+        },
+        {
+          label: 'Pricing' + DOTS,
+          icon: '\u0025',
+          onPick: () => {
+            gw.markups()
+            setSheet('pricing')
+          },
+        },
+      )
+    }
+    return items
+  }
+
   /**
    * What a right-click offers on nothing in particular.
    *
@@ -1597,6 +1703,55 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         <span className="mgr-mark">F</span>
         <span className="brand-name">FERARO</span>
         <span className="mgr-pill">{isAdmin ? 'BACK OFFICE' : 'MANAGER'}</span>
+
+        {/* The menu bar, as Cubex has it. Everything here was already in
+            the product and reachable only by right-clicking, which is a
+            fine shortcut and a poor way to find out something exists. */}
+        <nav className="mgr-menubar">
+          <button
+            type="button"
+            className="mgr-menu-top"
+            onClick={(e) =>
+              setMenu({
+                x: e.currentTarget.getBoundingClientRect().left,
+                y: e.currentTarget.getBoundingClientRect().bottom,
+                subject: { title: 'New' },
+                items: newMenu(),
+              })
+            }
+          >
+            New
+          </button>
+          <button
+            type="button"
+            className="mgr-menu-top"
+            onClick={(e) =>
+              setMenu({
+                x: e.currentTarget.getBoundingClientRect().left,
+                y: e.currentTarget.getBoundingClientRect().bottom,
+                subject: { title: 'Charts' },
+                items: chartsMenu(),
+              })
+            }
+          >
+            Charts
+          </button>
+          <button
+            type="button"
+            className="mgr-menu-top"
+            onClick={(e) =>
+              setMenu({
+                x: e.currentTarget.getBoundingClientRect().left,
+                y: e.currentTarget.getBoundingClientRect().bottom,
+                subject: { title: 'Reports' },
+                items: reportsMenu(),
+              })
+            }
+          >
+            Reports
+          </button>
+        </nav>
+
         <div className="grow" />
         <span className="cap">{gw.session?.login}</span>
 
@@ -1701,6 +1856,26 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             >
               ×
             </button>
+          </div>
+
+          {/* Live and demo as two lists rather than one, as Cubex has it.
+              They are different populations and a desk works one at a
+              time: a demo account in a list of live ones is a row
+              somebody has to re-read to be sure it is not real. */}
+          <div className="mgr-side-tabs">
+            {(['live', 'demo'] as const).map((which) => (
+              <button
+                key={which}
+                type="button"
+                className={side === which ? 'on' : undefined}
+                onClick={() => setSide(which)}
+              >
+                {which === 'live' ? 'LIVE' : 'DEMO'}
+                <span className="mgr-side-count">
+                  {matches.filter((a) => (which === 'live' ? a.live : !a.live)).length}
+                </span>
+              </button>
+            ))}
           </div>
 
           <label className="mgr-find-row">
@@ -1877,31 +2052,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         {/* ── Chart, centre ── */}
         {layout.open.chart ? (
         <section className="mgr-chart">
-          <div className="mgr-chart-area">
-            <ChartPane
-              gw={gw}
-              instrument={instrument}
-              interval={interval}
-              onInterval={setInterval}
-              last={quote?.bid}
-              lines={[
-                ...positionLines(gw.positions, instrument),
-                ...restingLines(gw.pending, instrument),
-                ...aimLines(aiming, instrument),
-              ]}
-              overlay={
-                <DealTicket
-                  instrument={instrument}
-                  quote={quote}
-                  account={account ? account.id : null}
-                  refuse={dealRefusal(account, gw.connected)}
-                  onPlace={deal}
-                  onAim={setAiming}
-                />
-              }
-            />
-          </div>
-          <div className="mgr-symtabs mgr-foot-tabs">
+          <div className="mgr-symtabs mgr-head-tabs">
             {charts.map((chart) => {
               const inst = instruments.find((i) => i.id === chart.id)
               if (!inst) return null
@@ -1933,9 +2084,42 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
                 </span>
               )
             })}
-            <span className="dim symtab-hint">
-              pick a symbol in the market watch to open another
-            </span>
+            {/* Cubex's "+ Add" rather than a sentence. A tab strip whose
+                last item is an instruction is a strip that has given up on
+                being a tab strip — the affordance should say what it does
+                and then do it. */}
+            <button
+              type="button"
+              className="symtab-add"
+              title="Open another chart from the market watch"
+              onClick={() => openChart(instrument.id)}
+            >
+              + Add
+            </button>
+          </div>
+          <div className="mgr-chart-area">
+            <ChartPane
+              gw={gw}
+              instrument={instrument}
+              interval={interval}
+              onInterval={setInterval}
+              last={quote?.bid}
+              lines={[
+                ...positionLines(gw.positions, instrument),
+                ...restingLines(gw.pending, instrument),
+                ...aimLines(aiming, instrument),
+              ]}
+              overlay={
+                <DealTicket
+                  instrument={instrument}
+                  quote={quote}
+                  account={account ? account.id : null}
+                  refuse={dealRefusal(account, gw.connected)}
+                  onPlace={deal}
+                  onAim={setAiming}
+                />
+              }
+            />
           </div>
         </section>
         ) : null}
