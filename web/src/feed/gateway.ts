@@ -1511,6 +1511,16 @@ export class GatewayClient {
     this.send({ type: 'markups' })
   }
 
+  /**
+   * Prices several instruments the same way at once.
+   *
+   * All or nothing at the gateway. An empty field means "leave it", so
+   * setting a spread across a list does not restate the commission.
+   */
+  adminBulkPricing(instruments: readonly number[], markup: string, commission: string): void {
+    this.send({ type: 'adminBulkPricing', instruments, markup, commission })
+  }
+
   adminSetMarkup(instrument: number, markup: string): void {
     this.send({ type: 'adminSetMarkup', instrument, markup })
   }

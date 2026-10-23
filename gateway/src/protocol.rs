@@ -247,6 +247,23 @@ pub enum ClientMessage {
     /// Administrator: set one. Zero removes it.
     #[serde(rename_all = "camelCase")]
     AdminSetMarkup { instrument: u32, markup: String },
+    /// Administrator: price several instruments the same way at once.
+    ///
+    /// All or nothing. A loop over the single messages could stop
+    /// halfway, leaving some symbols repriced and some not with nothing
+    /// saying which — and the operator's next move would be to apply it
+    /// again over the half that already took.
+    ///
+    /// An empty field is "leave it": a desk setting a spread across a
+    /// list should not have to restate the commission it is not changing.
+    #[serde(rename_all = "camelCase")]
+    AdminBulkPricing {
+        instruments: Vec<u32>,
+        #[serde(default)]
+        markup: String,
+        #[serde(default)]
+        commission: String,
+    },
     /// Administrator: what opening one unit costs. Zero removes it.
     #[serde(rename_all = "camelCase")]
     AdminSetCommission { instrument: u32, commission: String },

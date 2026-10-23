@@ -55,6 +55,15 @@ export interface PricingSheetProps {
   readonly mayEdit: boolean
   onSetMarkup(instrument: number, markup: string): void
   onSetCommission(instrument: number, commission: string): void
+  /**
+   * Prices several at once.
+   *
+   * One call rather than a loop over the single ones, because a loop can
+   * stop halfway: some symbols repriced, some not, nothing saying which,
+   * and the obvious next move is to apply it again over the half that
+   * already took. The gateway does all of them or none.
+   */
+  onBulk(instruments: readonly number[], markup: string, commission: string): void
   /** Called after a change, to read the list back. */
   onChanged(): void
 }
@@ -64,9 +73,14 @@ export function PricingSheet({
   mayEdit,
   onSetMarkup,
   onSetCommission,
+  onBulk,
   onChanged,
 }: PricingSheetProps) {
   const [filter, setFilter] = useState('')
+  /** The rows a bulk change would land on. */
+  const [picked, setPicked] = useState<ReadonlySet<number>>(new Set())
+  const [bulkMarkup, setBulkMarkup] = useState('')
+  const [bulkCommission, setBulkCommission] = useState('')
   /**
    * What is in the boxes, by `instrument:field`.
    *
@@ -80,6 +94,7 @@ export function PricingSheet({
   // stop showing this screen's draft of it.
   useEffect(() => {
     setDraft({})
+    setPicked(new Set())
   }, [pricing])
 
   const rows = pricing.filter((p) =>
@@ -149,10 +164,89 @@ export function PricingSheet({
         </span>
       </div>
 
+      {picked.size > 0 && mayEdit ? (
+        <div className="pr-bulk">
+          <span className="pr-bulk-count">{picked.size} picked</span>
+          <label>
+            <span className="cap">Markup</span>
+            <input
+              className="pr-box mono"
+              value={bulkMarkup}
+              placeholder="leave empty"
+              inputMode="decimal"
+              spellCheck={false}
+              onChange={(e) => setBulkMarkup(e.target.value)}
+            />
+          </label>
+          <label>
+            <span className="cap">Commission</span>
+            <input
+              className="pr-box mono"
+              value={bulkCommission}
+              placeholder="leave empty"
+              inputMode="decimal"
+              spellCheck={false}
+              onChange={(e) => setBulkCommission(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="mgr-go"
+            disabled={bulkMarkup.trim() === '' && bulkCommission.trim() === ''}
+            onClick={() => {
+              const ids = [...picked]
+              if (
+                !window.confirm(
+                  `Reprice ${ids.length} instrument(s)?` +
+                    (bulkMarkup.trim() ? `\nMarkup ${bulkMarkup.trim()}` : '') +
+                    (bulkCommission.trim()
+                      ? `\nCommission ${bulkCommission.trim()}`
+                      : ''),
+                )
+              )
+                return
+              onBulk(ids, bulkMarkup.trim(), bulkCommission.trim())
+              setBulkMarkup('')
+              setBulkCommission('')
+              setPicked(new Set())
+              window.setTimeout(onChanged, 250)
+            }}
+          >
+            Apply to all picked
+          </button>
+          <button
+            type="button"
+            className="mgr-mini"
+            onClick={() => setPicked(new Set())}
+          >
+            Clear
+          </button>
+          <span className="dim">An empty box leaves that one alone.</span>
+        </div>
+      ) : null}
+
       <div className="table-wrap pr-wrap">
         <table className="table">
           <thead>
             <tr>
+              {mayEdit ? (
+                <th style={{ width: 28 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Pick every row shown"
+                    // Everything *shown*, not everything there: somebody
+                    // who has filtered to the crypto means the crypto.
+                    checked={rows.length > 0 && rows.every((p) => picked.has(p.instrument))}
+                    onChange={(e) =>
+                      setPicked(
+                        e.target.checked
+                          ? new Set(rows.map((p) => p.instrument))
+                          : new Set(),
+                      )
+                    }
+                  />
+                </th>
+              ) : null}
               <th>Instrument</th>
               <th className="num" style={{ width: 130 }}>
                 Markup per side
@@ -167,7 +261,24 @@ export function PricingSheet({
           </thead>
           <tbody>
             {rows.map((p) => (
-              <tr key={p.instrument}>
+              <tr key={p.instrument} className={picked.has(p.instrument) ? 'row-active' : undefined}>
+                {mayEdit ? (
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Pick ${p.symbol}`}
+                      checked={picked.has(p.instrument)}
+                      onChange={() =>
+                        setPicked((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(p.instrument)) next.delete(p.instrument)
+                          else next.add(p.instrument)
+                          return next
+                        })
+                      }
+                    />
+                  </td>
+                ) : null}
                 <td>
                   <span className="pr-sym">
                     <Badge symbol={p.symbol} size={18} />

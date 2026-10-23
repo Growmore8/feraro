@@ -2907,6 +2907,9 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             mayEdit={isAdmin}
             onSetMarkup={(i, v) => gw.adminSetMarkup(i, v)}
             onSetCommission={(i, v) => gw.adminSetCommission(i, v)}
+            onBulk={(ids, markup, commission) =>
+              gw.adminBulkPricing(ids, markup, commission)
+            }
             onChanged={() => gw.markups()}
           />
         </Sheet>

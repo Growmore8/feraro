@@ -155,11 +155,7 @@ impl Markups {
         if per_unit < Money::ZERO {
             bail!("a commission cannot be negative — the house does not pay the client to trade");
         }
-        if per_unit == Money::ZERO {
-            self.charges.remove(&instrument);
-        } else {
-            self.charges.insert(instrument, per_unit);
-        }
+        self.put_commission(instrument, per_unit);
         self.save()
     }
 
@@ -170,15 +166,81 @@ impl Markups {
 
     /// Sets a markup, or removes it when zero.
     pub fn set(&mut self, instrument: InstrumentId, markup: Price) -> Result<()> {
+        self.put_markup(instrument, markup)?;
+        self.save()
+    }
+
+    /// Sets many at once, writing the file a single time.
+    ///
+    /// # Why this is not a loop over `set`
+    ///
+    /// Two reasons, and the second is the one that matters.
+    ///
+    /// A loop writes the file once per instrument, so changing twenty-one
+    /// symbols means twenty-one temp-and-renames. That is merely wasteful.
+    ///
+    /// The real point is that a loop can stop halfway. A bad value in the
+    /// middle would leave some symbols repriced and some not, with nothing
+    /// saying which — and the operator's next move would be to apply it
+    /// again, over the half that already took. Here every value is checked
+    /// before any of them is applied, so the answer is all or nothing.
+    ///
+    /// `markup` and `commission` are each optional: a desk setting a
+    /// spread across a list should not have to restate the commission it
+    /// was not changing.
+    pub fn set_many(
+        &mut self,
+        instruments: &[InstrumentId],
+        markup: Option<Price>,
+        commission: Option<Money>,
+    ) -> Result<usize> {
+        if instruments.is_empty() {
+            bail!("no instruments were named");
+        }
+        if markup.is_none() && commission.is_none() {
+            bail!("nothing to set");
+        }
+        if markup.is_some_and(|m| m < Price::ZERO) {
+            bail!("a markup cannot be negative — the house does not pay the client the spread");
+        }
+        if commission.is_some_and(|c| c < Money::ZERO) {
+            bail!("a commission cannot be negative — the house does not pay the client to trade");
+        }
+
+        for id in instruments {
+            if let Some(markup) = markup {
+                self.put_markup(*id, markup)?;
+            }
+            if let Some(commission) = commission {
+                self.put_commission(*id, commission);
+            }
+        }
+        self.save()?;
+        Ok(instruments.len())
+    }
+
+    /// Puts one markup in memory, without writing.
+    fn put_markup(&mut self, instrument: InstrumentId, markup: Price) -> Result<()> {
         if markup < Price::ZERO {
             bail!("a markup cannot be negative — the house does not pay the client the spread");
         }
+        // Zero is removal rather than a stored zero: the file says what
+        // the desk has decided, and "nothing" is not a decision.
         if markup == Price::ZERO {
             self.held.remove(&instrument);
         } else {
             self.held.insert(instrument, markup);
         }
-        self.save()
+        Ok(())
+    }
+
+    /// The same for a commission. Non-negative is checked by the caller.
+    fn put_commission(&mut self, instrument: InstrumentId, per_unit: Money) {
+        if per_unit == Money::ZERO {
+            self.charges.remove(&instrument);
+        } else {
+            self.charges.insert(instrument, per_unit);
+        }
     }
 }
 
@@ -203,6 +265,81 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn setting_many_is_all_or_nothing() {
+        // A loop over the single setter could stop halfway, leaving some
+        // symbols repriced and some not with nothing saying which — and
+        // the operator's next move would be to apply it again, over the
+        // half that already took.
+        let s = Scratch::new("bulk-atomic");
+        let mut m = Markups::load(&s.file()).unwrap();
+        let ids = [InstrumentId(1), InstrumentId(2), InstrumentId(3)];
+
+        let bad = m.set_many(&ids, Some(Price::parse("-0.5").unwrap()), None);
+        assert!(bad.is_err());
+        for id in ids {
+            assert_eq!(m.of(id), Price::ZERO, "a refusal priced something");
+        }
+
+        assert_eq!(
+            m.set_many(&ids, Some(Price::parse("0.5").unwrap()), None)
+                .unwrap(),
+            3
+        );
+        for id in ids {
+            assert_eq!(m.of(id), Price::parse("0.5").unwrap());
+        }
+    }
+
+    #[test]
+    fn an_empty_field_leaves_that_one_alone() {
+        // A desk setting a spread across a list should not have to
+        // restate the commission it is not changing.
+        let s = Scratch::new("bulk-partial");
+        let mut m = Markups::load(&s.file()).unwrap();
+        let ids = [InstrumentId(1)];
+        m.set_many(&ids, None, Some(Money::parse("2.50").unwrap()))
+            .unwrap();
+        m.set_many(&ids, Some(Price::parse("0.5").unwrap()), None)
+            .unwrap();
+
+        assert_eq!(m.of(InstrumentId(1)), Price::parse("0.5").unwrap());
+        assert_eq!(
+            m.commission_of(InstrumentId(1)),
+            Money::parse("2.50").unwrap(),
+            "the commission was wiped by a markup change"
+        );
+    }
+
+    #[test]
+    fn setting_many_to_zero_removes_them() {
+        // The file says what the desk has decided, and "nothing" is not
+        // a decision — otherwise every instrument ever touched stays in
+        // the file forever at zero.
+        let s = Scratch::new("bulk-zero");
+        let mut m = Markups::load(&s.file()).unwrap();
+        let ids = [InstrumentId(1), InstrumentId(2)];
+        m.set_many(
+            &ids,
+            Some(Price::parse("0.5").unwrap()),
+            Some(Money::parse("1.00").unwrap()),
+        )
+        .unwrap();
+        assert_eq!(m.all().count(), 2);
+
+        m.set_many(&ids, Some(Price::ZERO), Some(Money::ZERO))
+            .unwrap();
+        assert_eq!(m.all().count(), 0);
+    }
+
+    #[test]
+    fn setting_many_refuses_an_empty_list_and_an_empty_change() {
+        let s = Scratch::new("bulk-empty");
+        let mut m = Markups::load(&s.file()).unwrap();
+        assert!(m.set_many(&[], Some(Price::ZERO), None).is_err());
+        assert!(m.set_many(&[InstrumentId(1)], None, None).is_err());
     }
 
     #[test]

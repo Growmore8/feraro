@@ -1093,6 +1093,7 @@ async fn session(
                             | ClientMessage::AdminSetSymbolOpen { .. }
                             | ClientMessage::AdminSetSymbolSizes { .. }
                             | ClientMessage::Markups
+                            | ClientMessage::AdminBulkPricing { .. }
                             | ClientMessage::AdminSetMarkup { .. }
                             | ClientMessage::AdminSetCommission { .. }
                             | ClientMessage::AdminSetPassword { .. }) => {
@@ -1997,7 +1998,9 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         // What every client is quoted is the platform's pricing. A manager
         // reads it — they are asked why a spread is what it is — but does
         // not set it.
-        ClientMessage::AdminSetMarkup { .. } | ClientMessage::AdminSetCommission { .. } => {
+        ClientMessage::AdminSetMarkup { .. }
+        | ClientMessage::AdminSetCommission { .. }
+        | ClientMessage::AdminBulkPricing { .. } => {
             Some("only an administrator may change what the house charges")
         }
         // The catalogue is the platform's, for the same reason its
@@ -2606,6 +2609,56 @@ async fn administer(
                 })
                 .collect();
             Ok(ServerMessage::Markups { markups })
+        }
+
+        ClientMessage::AdminBulkPricing {
+            instruments,
+            markup,
+            commission,
+        } => {
+            let ids: Vec<InstrumentId> = instruments.into_iter().map(InstrumentId).collect();
+            let markup = match markup.trim() {
+                "" => None,
+                text => match money::Price::parse(text) {
+                    Ok(p) => Some(p),
+                    Err(_) => {
+                        return Ok(ServerMessage::AdminResult {
+                            done: false,
+                            detail: format!("Refused: {text:?} is not a markup."),
+                        })
+                    }
+                },
+            };
+            let commission = match commission.trim() {
+                "" => None,
+                text => match money::Money::parse(text) {
+                    Ok(m) => Some(m),
+                    Err(_) => {
+                        return Ok(ServerMessage::AdminResult {
+                            done: false,
+                            detail: format!("Refused: {text:?} is not a commission."),
+                        })
+                    }
+                },
+            };
+
+            let done = gate
+                .markups
+                .lock()
+                .expect("the markup lock")
+                .set_many(&ids, markup, commission);
+            Ok(match done {
+                Ok(count) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: format!(
+                        "{count} instrument(s) repriced. It takes effect on each one's next tick."
+                    ),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
         }
 
         ClientMessage::AdminSetMarkup { instrument, markup } => {

@@ -87,6 +87,11 @@ export interface GatewayView extends GatewayState {
     qtyStep: string,
   ): void
   markups(): void
+  adminBulkPricing(
+    instruments: readonly number[],
+    markup: string,
+    commission: string,
+  ): void
   adminSetMarkup(instrument: number, markup: string): void
   adminSetCommission(instrument: number, commission: string): void
   requestCandles(instrumentId: number, interval: string, limit: number): void
@@ -410,6 +415,13 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     clientRef.current?.markups()
   }, [])
 
+  const adminBulkPricing = useCallback(
+    (instruments: readonly number[], markup: string, commission: string) => {
+      clientRef.current?.adminBulkPricing(instruments, markup, commission)
+    },
+    [],
+  )
+
   const adminSetMarkup = useCallback((instrument: number, markup: string) => {
     clientRef.current?.adminSetMarkup(instrument, markup)
   }, [])
@@ -506,6 +518,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminSetSymbolOpen,
       adminSetSymbolSizes,
       markups,
+      adminBulkPricing,
       adminSetMarkup,
       adminSetCommission,
       requestCandles,
@@ -557,6 +570,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminSetSymbolOpen,
       adminSetSymbolSizes,
       markups,
+      adminBulkPricing,
       adminSetMarkup,
       adminSetCommission,
       requestCandles,

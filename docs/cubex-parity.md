@@ -117,7 +117,7 @@ against the other twenty-nine pages.
 | Per-symbol spread markup | yes | yes |
 | Commission per unit | yes | yes |
 | **Symbol administration from the UI** | yes | **yes** — open/close and sizes |
-| Bulk spread edit | yes | — |
+| Bulk spread edit | yes | **yes** |
 | Per-account symbol overrides | yes | — |
 | Symbol permissions per account | yes | — |
 | **Trade groups** (markup/swap per group) | yes | — |
@@ -206,9 +206,12 @@ against the other twenty-nine pages.
 In the order a broker needs it, not the order it is listed:
 
 1. **Amend a resting order** *(engine)* — the last trading gap.
-2. **Bulk spread edit, per-account symbol overrides, symbol permissions** —
-   the three things symbol administration unblocked.
-3. **KYC documents** — upload, review queue, storage.
+2. **Symbol permissions** — which instruments one account may trade.
+3. **Per-account symbol overrides** — a different markup for one account.
+   Bigger than it sounds: the markup is applied once, globally, when a
+   price arrives, so per-account pricing means each account sees its own
+   book. Trade groups may be the better shape for it.
+4. **KYC documents** — upload, review queue, storage.
 5. **Client profile and avatar** — a name to show instead of an email.
 6. **Per-account risk** *(engine)* — leverage, margin-call level, max lot,
    swap-free.
