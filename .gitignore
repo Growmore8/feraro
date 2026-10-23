@@ -24,6 +24,10 @@
 # might pay to long after it was rotated.
 payments.json
 
+# What the house charges on each instrument. Per-deployment pricing, and a
+# committed one is a competitor reading your spreads.
+markups.json
+
 # The user store holds password hashes. Hashes are not secrets you can use,
 # but they are secrets you can attack offline, and a committed one is
 # permanent. Every deployment makes its own.
