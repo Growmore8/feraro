@@ -98,7 +98,7 @@ against the other twenty-nine pages.
 | Market, limit, stop, stop-limit | yes | yes |
 | Stop loss / take profit | yes | yes |
 | **Partial close** | yes | **yes** *(engine)* |
-| **Amend a resting order** | yes | — next up |
+| **Amend a resting order** | yes | **yes** *(engine)* |
 | Trailing stop | yes | — *(engine)* |
 | Order expiry | yes | — *(engine)* |
 | Hedging / netting | yes | yes |
@@ -140,14 +140,14 @@ against the other twenty-nine pages.
 
 | Cubex tab | Feraro |
 |---|---|
-| Overview | — figures are in the strip |
+| Overview | **yes** |
 | Trade | yes |
 | History | yes |
-| Summary | **yes**, client only — desk needs one |
-| Clients | — right-click only |
+| Summary | **yes** |
+| Clients | **yes** |
 | Audit | yes |
-| Payments | — right-click only |
-| KYC | — right-click only |
+| Payments | **yes** |
+| KYC | **yes** — states; documents still to come |
 | Requests | yes |
 | Symbols | **yes** |
 | Groups | — |
@@ -178,7 +178,7 @@ against the other twenty-nine pages.
 | One-click trading | yes | — |
 | Price alerts | yes | — |
 | CSV export | yes | — |
-| Chart indicators a trader picks | yes | MACD, fixed |
+| Chart indicators a trader picks | yes | MACD and RSI; no drawing tools |
 | Drawing tools | yes | — |
 
 ## Everything else
@@ -205,27 +205,26 @@ against the other twenty-nine pages.
 
 In the order a broker needs it, not the order it is listed:
 
-1. **Amend a resting order** *(engine)* — the last trading gap.
-2. **Symbol permissions** — which instruments one account may trade.
-3. **Per-account symbol overrides** — a different markup for one account.
+1. **Symbol permissions** — which instruments one account may trade.
+2. **Per-account symbol overrides** — a different markup for one account.
    Bigger than it sounds: the markup is applied once, globally, when a
    price arrives, so per-account pricing means each account sees its own
    book. Trade groups may be the better shape for it.
-4. **KYC documents** — upload, review queue, storage.
-5. **Client profile and avatar** — a name to show instead of an email.
-6. **Per-account risk** *(engine)* — leverage, margin-call level, max lot,
+3. **KYC documents** — upload, review queue, storage.
+4. **Client profile and avatar** — a name to show instead of an email.
+5. **Per-account risk** *(engine)* — leverage, margin-call level, max lot,
    swap-free.
-7. **Trade groups** — markup and swap per group of accounts.
-8. **Email** — statements, margin calls, confirmations. Then password reset
+6. **Trade groups** — markup and swap per group of accounts.
+7. **Email** — statements, margin calls, confirmations. Then password reset
    and email verification, which need it.
-9. **Notifications** — in-app bell, then push.
-10. **Account states** — deactivate, do-not-liquidate, account requests.
-11. **One-click trading, price alerts, CSV export, chart indicators.**
-12. **Copy trading**, **signals**, **broadcast**, **referral**.
-13. **Reporting read model** — project the journal into Postgres, so the
+8. **Notifications** — in-app bell, then push.
+9. **Account states** — deactivate, do-not-liquidate, account requests.
+10. **One-click trading, price alerts, CSV export, chart indicators.**
+11. **Copy trading**, **signals**, **broadcast**, **referral**.
+12. **Reporting read model** — project the journal into Postgres, so the
     reports Cubex gets from its tables can be written against a database
     instead of a window.
-14. **Passkeys, Google sign-in, PIN** — alternatives to a password that
+13. **Passkeys, Google sign-in, PIN** — alternatives to a password that
     already has a second factor.
 
 Each row ends the way every row in [roadmap.md](roadmap.md) ends: tests
