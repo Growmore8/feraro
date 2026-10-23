@@ -34,7 +34,8 @@ in with.
 | `rollover` | Trading-day calendar and overnight financing | 14 |
 | `web/lib` | Terminal money and indicators — parity with the engine | 36 |
 | `web/feed` | Exchange and gateway payload parsers | 57 |
-| `gateway` | Engine, feeds, accounts, the desk, books, bars, snapshots, roles | 153 |
+| `web/lib` (layout, ticket) | Remembered panes, the ticket's price step | 19 |
+| `gateway` | Engine, feeds, accounts, the desk, books, bars, snapshots, roles, payments | 164 |
 
 ## Layout
 
@@ -225,6 +226,33 @@ The menu closes on the next click, on Escape, on a scroll and on a resize. A
 menu floating over ticking prices goes stale, and a stale menu that still
 acts is how the wrong account gets funded.
 
+### The sounds
+
+Nine alerts, **synthesised rather than shipped as files**. That is not
+frugality: it means each one is specified rather than chosen, and the
+relationship between them lives in the code where it can be argued about.
+
+| | pitch | shape |
+|---|---|---|
+| sign-in · sign-out | rising · falling | two soft notes |
+| opened · closed | mid | one short blip |
+| take profit · stop loss | rising third · falling third | bright · muted |
+| margin call | high | three urgent beeps |
+| liquidated | low | long, and deliberately dissonant |
+| refused | low | a flat buzz |
+
+Pitch falls as the news worsens, and only the two that demand action repeat.
+A trader learns the set in an afternoon without being taught it.
+
+Sound is off by a tick box in the **View** menu and remembered per browser.
+Nothing plays until the page has been interacted with, because browsers refuse
+audio until then and are right to.
+
+Sign-in and sign-out are the one pair with no push behind them: a session
+change is journaled and read from the activity feed, which the desk polls. It
+is as live as the record gets without a new wire message, and it is honest
+about being a poll.
+
 ### Arranging the screen
 
 All four panes — navigator, chart, market watch, toolbox — **resize and
@@ -305,11 +333,19 @@ beside the trades — replaying reproduces not just the balances but whose they
 are. An account with no owner is one nobody can be held to, which is why the
 engine no longer invents one at startup.
 
-**A client may hold several accounts** — up to `ACCOUNTS_PER_USER`, eight: one
-to practise on, one that is live, and further ones to keep strategies apart.
-Clients open them themselves. Each is a first-class account with its own
-number, balance and positions; what they share is the email that owns them,
-which is how the manager's tree groups them.
+**One demo account per login, and only one at a time.** A practice account is
+a trial, and a trial somebody can take again the moment it ends — or hold
+five of at once — is not a trial, it is an unlimited free product with an
+expiry date on each copy. A second demo is refused while one is running. An
+expired one does not block a new one: the thirty days running out is the end
+of that trial, and whether another may start is the desk's decision, made by
+renewing the old one or letting them open a fresh one.
+
+**Live accounts are not limited that way** — up to `ACCOUNTS_PER_USER`, eight.
+They are sub-accounts of a funded relationship, used to keep strategies apart,
+and the money in them is already the client's. Each is a first-class account
+with its own number, balance and positions; what they share is the email that
+owns them, which is how the manager's tree groups them.
 
 ### Demo, live, and the thirty days
 
@@ -331,6 +367,44 @@ The clock reads the journal's timestamps, not the wall clock, so a replay
 dates an account exactly as it was dated the first time. `AccountRenewed`
 starts it again — thirty more days, with the operator's name on the event.
 Renewing a live account is refused: it never expired.
+
+### Paying money in
+
+**There is no payment provider, and the platform does not pretend otherwise.**
+What it has is the instructions and a queue.
+
+An administrator publishes where money is sent — **crypto**, **UPI** or **bank
+transfer**, each with an address, a name the client will recognise, and
+anything they must do to be credited. Clients see the ones switched on, copy
+the address, pay, and then tell the platform they have paid.
+
+That claim credits nothing. It goes into a queue the desk works: somebody
+looks at the wallet or the bank statement, sees the money, and confirms it —
+and *that* is an ordinary journaled `FundsDeposited` with the operator's name
+on it, the same event as any other deposit. There is one record of money
+moving and one answer to who authorised it.
+
+The ordering is the point. A platform that credits an account because a client
+typed a reference number is a platform that pays out money it never received.
+
+A few things follow from that, and each is enforced rather than hoped for:
+
+* A claim leaves `pending` exactly once, so a double click cannot pay twice.
+* One open claim per account per method — pressing the button again is not
+  paying again.
+* A method that is switched off cannot be paid to, and a client cannot raise
+  a claim against one.
+* Retiring a method **hides** it rather than deleting it. A client may already
+  be paying to that wallet, and the desk has to recognise the address when the
+  money lands.
+* If the engine refuses the credit after the claim is settled, the operator is
+  told the account was **not** credited and to deposit by hand — rather than
+  being shown a success nobody received.
+
+Methods and claims live in `payments.json` beside the logins, not in the
+journal: a wallet is rotated and a bank changes, and an append-only log is the
+wrong shape for a thing whose current value is the only one that matters. What
+*is* journaled is the money.
 
 ### Identity checks
 
@@ -1062,6 +1136,70 @@ If `cargo test` fails to link with `link: missing operand`, a Unix `link.exe`
 from Git Bash is shadowing the real linker. Build from PowerShell, or put the
 toolchain's `bin` ahead of `/usr/bin` on `PATH`.
 
+## Running it on a server
+
+```sh
+cp gateway/.env.example gateway/.env        # feed keys; optional
+FERARO_DOMAIN=demo.example.com docker compose up -d
+docker compose logs gateway                 # the two seeded passwords, once
+```
+
+Three containers. **Caddy** terminates TLS and is the only thing with a port
+on the internet; it fetches and renews a Let's Encrypt certificate on its own,
+which matters because the platform's worst gap was a password crossing a
+network in clear and the fix must not be something somebody remembers to redo
+in ninety days. **The gateway** publishes no ports at all — it is reachable
+from Caddy and nowhere else, because it speaks plain `ws://`. **The terminals**
+are static files Caddy serves.
+
+The browser finds the socket from the page's own origin — `wss://host/ws` —
+so one build works on a laptop and on a server, and an `https://` page can
+never open a `ws://` socket because a constant was left behind.
+
+### Knowing it is alive
+
+`/health` answers `200` while prices are arriving and `503` once they have
+stopped, because "the process is running" is not the question a supervisor is
+asking: a gateway whose feeds stalled is up and useless. It reports uptime,
+how many prices have been seen and how long since the last one. Docker's
+health check calls `gateway --healthcheck`, which lives in the binary because
+the runtime image has no `curl` and should not grow one.
+
+It is bound to loopback and the proxy serves it only to private addresses.
+
+### Backing up
+
+**The journal is the database.** Every balance, position and decision is a fold
+over it, so copying that one directory copies the business — and losing it
+loses who owns what money.
+
+```sh
+ops/backup.sh                                   # hourly, from cron
+ops/restore.sh /var/backups/feraro/journal-....tar.gz
+```
+
+The journal is append-only and fsynced on a timer, so a copy taken while the
+gateway runs is a copy of a *prefix* of the log — which replays. A torn tail
+is indistinguishable from a crash, and the engine already refuses a corrupt
+segment rather than serving a wrong balance from it, so the backup needs no
+downtime.
+
+`restore.sh` refuses to overwrite a journal that has anything in it, and
+proves the backup by replaying it: a gateway that starts and reports healthy
+has verified the archive, which is the only verification worth having.
+
+Two things the scripts cannot do for you. **Copy the tarballs off the
+machine** — a backup on the same disk as the thing it backs up is not a
+backup. And **restore one on purpose, before you need to**; the first time you
+find out whether it works must not be the morning the disk died.
+
+### What is deliberately not in an image
+
+`.env`, `users.json`, `payments.json`, the journal and the snapshots. A key
+copied into a layer is a key in the image whatever the Dockerfile does
+afterwards, and a journal baked into one means a redeploy quietly reverts
+every balance to whenever that image was built.
+
 ## The invariants
 
 These are asserted by the test suite, not merely documented. Each has an ADR in
@@ -1126,6 +1264,14 @@ Named so that nobody mistakes an absence for an oversight:
 - **A sign-in audit trail.** *Actions* are attributed — who deposited, who
   placed an order on whose account. Sign-ins themselves are not: there is no
   record of who connected, from where, or when they failed to.
+- **A payment provider.** Money is paid to a wallet or a bank the desk
+  publishes, and credited by hand once somebody has seen it arrive. Nothing
+  reconciles automatically, and nothing pays out: a withdrawal is an
+  administrator moving the money themselves and recording it.
+- **A licence, and identity documents.** Taking client money needs
+  authorisation, and this collects no document to justify a verification.
+  Both are named here rather than implied by silence, and both are why the
+  honest description of this today is a demo platform.
 - **Dealer terminal.** Deliberately not built: desk work lives in the manager
   terminal, which `manager` and `admin` share.
 - **Per-manager permissions.** What a manager may do is one fixed split, the
