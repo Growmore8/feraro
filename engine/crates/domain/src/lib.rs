@@ -380,6 +380,36 @@ pub enum Event {
         /// Who set it.
         by: UserId,
     },
+    /// Money moved from one account to another.
+    ///
+    /// # Why this is one event and not two
+    ///
+    /// A withdrawal from one account followed by a deposit into another
+    /// would be two journal records, and a crash between them leaves money
+    /// that has left one account and arrived nowhere. There is no repair
+    /// for that: the journal is the database, and it would say, correctly
+    /// and forever, that the money is gone.
+    ///
+    /// So both legs are one record. It is written once or not at all, and a
+    /// replay can only ever land on the state where both sides moved.
+    ///
+    /// # What is not here
+    ///
+    /// No rate. Both accounts must hold the same currency, which the engine
+    /// checks before writing this — a cross-currency transfer is a
+    /// conversion, and a conversion has a rate somebody has to be
+    /// accountable for. When that exists it takes its own event rather than
+    /// a nullable field here.
+    FundsTransferred {
+        /// Account the money leaves.
+        from: AccountId,
+        /// Account it arrives in.
+        to: AccountId,
+        /// How much, in the currency both accounts share.
+        amount: Money,
+        /// Who moved it.
+        by: UserId,
+    },
     /// Money set aside on an account against losses.
     ///
     /// # Why this is not the bonus
@@ -860,6 +890,7 @@ impl Event {
             | Event::AccountOwnerSet { .. }
             | Event::CreditSet { .. }
             | Event::InsuranceSet { .. }
+            | Event::FundsTransferred { .. }
             | Event::AccountSuspended { .. }
             | Event::AccountReinstated { .. }
             | Event::OrderAccepted { .. }
@@ -899,6 +930,7 @@ impl Event {
             Event::FundsWithdrawn { .. } => 0x06,
             Event::CreditSet { .. } => 0x07,
             Event::InsuranceSet { .. } => 0x50,
+            Event::FundsTransferred { .. } => 0x51,
             Event::AccountSuspended { .. } => 0x08,
             Event::AccountReinstated { .. } => 0x09,
             Event::InstrumentListed { .. } => 0x10,
@@ -1291,6 +1323,17 @@ pub fn encode(record: &Record) -> Vec<u8> {
             w.money(amount);
             w.u64(by.0);
         }
+        Event::FundsTransferred {
+            from,
+            to,
+            amount,
+            by,
+        } => {
+            w.u64(from.0);
+            w.u64(to.0);
+            w.money(amount);
+            w.u64(by.0);
+        }
         Event::AccountSuspended { account, by } | Event::AccountReinstated { account, by } => {
             w.u64(account.0);
             w.u64(by.0);
@@ -1662,6 +1705,12 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             markup: r.price()?,
             commission: Money::ZERO,
         },
+        0x51 => Event::FundsTransferred {
+            from: AccountId(r.u64()?),
+            to: AccountId(r.u64()?),
+            amount: r.money()?,
+            by: UserId(r.u64()?),
+        },
         0x50 => Event::InsuranceSet {
             account: AccountId(r.u64()?),
             amount: r.money()?,
@@ -1856,6 +1905,12 @@ mod tests {
                 account: AccountId(1001),
                 amount: money::Money::parse("500.00").unwrap(),
                 by: UserId::SYSTEM,
+            },
+            Event::FundsTransferred {
+                from: AccountId(1001),
+                to: AccountId(1002),
+                amount: money::Money::parse("250.00").unwrap(),
+                by: UserId(1),
             },
             Event::InstrumentListed {
                 instrument: eurusd(),
@@ -2073,6 +2128,40 @@ mod tests {
         assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8 + 8 + 16);
         assert_eq!(&bytes[..2], &WIRE_VERSION.to_le_bytes());
         assert_eq!(bytes[18], 0x4F);
+    }
+
+    #[test]
+    fn a_transfer_crosses_as_two_accounts_one_amount_and_an_actor() {
+        let record = Record {
+            seq: Seq(9),
+            at: Timestamp(1_725_000_000_000_000_000),
+            event: Event::FundsTransferred {
+                from: AccountId(1001),
+                to: AccountId(1002),
+                amount: money::Money::parse("250.00").unwrap(),
+                by: UserId(1),
+            },
+        };
+        let bytes = encode(&record);
+        // Header, then from, to, the amount as a Money's sixteen bytes, and
+        // who moved it.
+        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 8 + 16 + 8);
+        assert_eq!(bytes[18], 0x51);
+        assert_eq!(decode(&bytes).expect("decodes").event, record.event);
+    }
+
+    #[test]
+    fn a_transfer_is_durable_because_losing_it_loses_money() {
+        // Not attribution and not a quote: this is the record that says where
+        // somebody's money is. A journal that acknowledged it before it was
+        // on disk could lose it in a crash, and nothing would know.
+        assert!(Event::FundsTransferred {
+            from: AccountId(1001),
+            to: AccountId(1002),
+            amount: money::Money::parse("1.00").unwrap(),
+            by: UserId(1),
+        }
+        .must_be_durable());
     }
 
     #[test]

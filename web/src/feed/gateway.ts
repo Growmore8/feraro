@@ -345,6 +345,10 @@ export interface StatementLine {
     | 'stopLoss'
     | 'takeProfit'
     | 'adjustment'
+    /** Money leaving for another of this client's accounts. */
+    | 'transferOut'
+    /** Money arriving from another of them. */
+    | 'transferIn'
   readonly ticket: number | null
   readonly amount: Money
   /** The balance after it. What makes a statement a statement. */
@@ -1262,6 +1266,18 @@ export class GatewayClient {
   /** The desk moving money without the client asking: bonus, insurance. */
   adminRaise(kind: MoneyKind, account: number, amount: string, note: string): void {
     this.send({ type: 'adminRaise', kind, account, amount, note })
+  }
+
+  /**
+   * Moves money from the selected account to another.
+   *
+   * Not an administrator's call, though the gateway answers it with an
+   * `adminResult`: a client moving their own money between their own
+   * accounts is the main case, and the gateway checks whose accounts
+   * these are rather than who is asking.
+   */
+  transfer(to: number, amount: string): void {
+    this.send({ type: 'transfer', to, amount })
   }
 
   /** Asks to be paid out, to one of this client's saved places. */

@@ -105,6 +105,9 @@ import {
 } from '../lib/money'
 import './ManagerTerminal.css'
 
+/** The ellipsis a menu label ends with when it opens a dialog. */
+const DOTS = '\u2026'
+
 /** How often the book refreshes itself while the screen is open. */
 const REFRESH_MS = 4_000
 
@@ -728,6 +731,52 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           money('deposit', 'Deposit', '\u2193', `Pays money into ${a.id} \u2014 ${who}.`),
           money('withdraw', 'Withdraw', '\u2191', `Takes money out of ${a.id} \u2014 ${who}. Bonus cannot be withdrawn.`),
           money('credit', 'Set bonus', '\u25c8', `Sets the non-withdrawable bonus on ${a.id} to this figure, replacing what is there.`),
+          {
+            label: 'Move to another account' + DOTS,
+            icon: '\u21c4',
+            // Only from the selected account: the gateway sends from
+            // whichever account the session is on, so offering it from a
+            // row that is not selected would send from the wrong one.
+            disabled: a.id !== selected,
+            hint: a.id === selected ? undefined : 'select it first',
+            onPick: () =>
+              setAsk({
+                title: 'Move money',
+                subject: `${a.id} \u2014 ${who}`,
+                icon: '\u21c4',
+                note: `Moves money out of ${a.id} and into another account. Both legs are one journal record, so there is no moment when the money is in neither. Demo and live do not mix, and the two accounts must hold the same currency.`,
+                fields: [
+                  {
+                    key: 'to',
+                    label: 'To account',
+                    placeholder: '1002',
+                    mode: 'numeric' as const,
+                    beside: true,
+                  },
+                  {
+                    key: 'amount',
+                    label: 'Amount',
+                    placeholder: '0.00',
+                    mode: 'decimal' as const,
+                    beside: true,
+                  },
+                ],
+                submitLabel: 'Move it',
+                run: ({ to, amount }) => {
+                  const target = Number((to ?? '').trim())
+                  if (!Number.isFinite(target) || target <= 0) return
+                  const sending = (amount ?? '').trim()
+                  if (
+                    !window.confirm(
+                      `Move ${sending} from account ${a.id} \u2014 ${who} \u2014 to account ${target}?`,
+                    )
+                  )
+                    return
+                  gw.transfer(target, sending)
+                  after(250)
+                },
+              }),
+          },
           '-',
           queued(
             'insuranceIn',
@@ -2739,6 +2788,10 @@ function statementWords(kind: string): string {
       return 'Take profit'
     case 'adjustment':
       return 'Adjustment by the desk'
+    case 'transferOut':
+      return 'Moved to another account'
+    case 'transferIn':
+      return 'Moved from another account'
     default:
       return kind
   }
@@ -2904,6 +2957,8 @@ function auditWords(line: AuditLine): string {
       return 'Owner set'
     case 'adjustment':
       return 'Adjustment'
+    case 'transfer':
+      return 'Transfer'
     case 'priceCorrected':
       return 'Price corrected'
     default:

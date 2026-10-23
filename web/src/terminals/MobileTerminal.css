@@ -746,6 +746,7 @@
 @media (max-width: 560px) {
   .pb-acts { margin-left: 0; width: 100%; }
   .wd-picks button { max-width: 100%; }
+  .mv-picks button { flex: 1 1 100%; }
   .wd-figures { gap: 14px; }
   .wal-tabs button { flex: 1; justify-content: center; padding: 9px 6px; }
 }

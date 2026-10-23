@@ -808,6 +808,8 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             mine={gw.myDeposits}
             account={account.id}
             live={account.live}
+            accounts={gw.session?.accounts ?? []}
+            balance={account.balance}
             credit={account.credit}
             freeMargin={account.freeMargin}
             insurance={account.insurance}
@@ -819,6 +821,9 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             onWithdraw={(payout, amount, note) => {
               gw.requestWithdrawal(payout, amount, note)
               window.setTimeout(() => gw.paymentMethods(), 250)
+            }}
+            onMove={(to, amount) => {
+              gw.transfer(to, amount)
             }}
             onSavePayout={(m) => {
               gw.savePayoutMethod(m)

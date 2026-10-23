@@ -594,6 +594,45 @@ describe('the money queue', () => {
   })
 })
 
+describe('a transfer on the statement', () => {
+  it('reads as two legs at one moment, one out and one in', () => {
+    // Both carry the same sequence number because they are one journal
+    // record. A screen that sorted them apart would show a moment when the
+    // money was in neither account, and somebody would go looking for it.
+    const frame = JSON.stringify({
+      type: 'statement',
+      entries: [
+        {
+          seq: 256,
+          at: 1_700_000_000_000,
+          kind: 'transferOut',
+          ticket: null,
+          amount: '-2500.000000000',
+          balance: '2500.000000000',
+        },
+        {
+          seq: 256,
+          at: 1_700_000_000_000,
+          kind: 'transferIn',
+          ticket: null,
+          amount: '2500.000000000',
+          balance: '2500.000000000',
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    const [out, into] = patch.statement!
+    expect(out!.kind).toBe('transferOut')
+    expect(into!.kind).toBe('transferIn')
+    expect(out!.seq).toBe(into!.seq)
+    // The pair nets to nothing: a transfer moves money, it does not make or
+    // destroy any, and a statement that summed them to anything else would
+    // be reporting a platform that had invented some.
+    expect(out!.amount + into!.amount).toBe(0n)
+    expect(showMoney(into!.amount)).toBe('2,500.00')
+  })
+})
+
 describe('pricing', () => {
   it('reads the markup, the commission and the spread they produce', () => {
     const frame = JSON.stringify({

@@ -1026,6 +1026,11 @@ async fn session(
                                 let reply = administer(&gate, session, admin_message, &commands).await?;
                                 send(&mut sink, &reply).await?;
                             }
+                            ClientMessage::Transfer { to, amount } => {
+                                let reply =
+                                    transfer(session, &commands, to, &amount).await?;
+                                send(&mut sink, &reply).await?;
+                            }
                             trade => {
                                 if let Some(command) = decode(session.user, session.selected, trade) {
                                     // A full queue drops the command rather than
@@ -1184,6 +1189,99 @@ async fn resume(
         commands,
     )
     .await
+}
+
+/// Moves money from the session's account to another.
+///
+/// # Who may, and why it is not simply "the desk"
+///
+/// Two accounts with the **same owner** is one person moving their own
+/// money about: no money enters or leaves the platform, nobody else is
+/// better or worse off, and the only question is whether this session may
+/// act on both accounts. A client may, for their own; a manager may, for a
+/// client in their book.
+///
+/// Two accounts with **different owners** is money moving between people.
+/// That is a withdrawal and a deposit wearing a disguise, and it is an
+/// administrator's — otherwise a manager could move a client's balance
+/// onto an account they themselves hold, and the audit trail would read as
+/// an ordinary transfer.
+///
+/// The engine checks the rest: positive, same currency, both demo or both
+/// live, free margin, and cash rather than bonus.
+async fn transfer(
+    session: &Signed,
+    commands: &mpsc::Sender<Command>,
+    to: u64,
+    amount: &str,
+) -> Result<ServerMessage> {
+    let refuse = |why: String| ServerMessage::AdminResult {
+        done: false,
+        detail: format!("Refused: {why}"),
+    };
+
+    let Ok(moving) = money::Money::parse(amount.trim()) else {
+        return Ok(refuse(format!("{amount:?} is not an amount.")));
+    };
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    commands
+        .send(Command::Accounts {
+            user: None,
+            reply: reply_tx,
+        })
+        .await
+        .ok();
+    let all = reply_rx.await.unwrap_or_default();
+
+    let target = AccountId(to);
+    let here = all.iter().find(|a| a.id == session.selected.0);
+    let there = all.iter().find(|a| a.id == to);
+
+    if there.is_none() {
+        return Ok(refuse(format!("there is no account {to}.")));
+    }
+    if !session.may_act_on(session.selected, here.is_some()) {
+        return Ok(refuse("that is not your account to send from.".to_owned()));
+    }
+    if !session.may_act_on(target, true) {
+        return Ok(refuse(format!("account {to} is not yours to send to.")));
+    }
+    // Between two people rather than between one person's accounts. See the
+    // doc comment: this is a withdrawal and a deposit by another name.
+    let same_owner = here.and_then(|a| a.owner) == there.and_then(|a| a.owner)
+        && here.and_then(|a| a.owner).is_some();
+    if !same_owner && !session.is_admin() {
+        return Ok(refuse(
+            "those accounts belong to different people, and moving money between people is an administrator's.".to_owned(),
+        ));
+    }
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    commands
+        .send(Command::Administer {
+            by: session.user,
+            account: session.selected,
+            action: AdminAction::Transfer {
+                to: target,
+                amount: moving,
+            },
+            reply: reply_tx,
+        })
+        .await
+        .ok();
+
+    Ok(match reply_rx.await {
+        Ok(AdminOutcome::Done) => ServerMessage::AdminResult {
+            done: true,
+            detail: format!(
+                "Moved {amount} from account {} to {to}.",
+                session.selected.0
+            ),
+        },
+        Ok(AdminOutcome::Refused(why)) => refuse(why.to_owned()),
+        Err(_) => refuse("the engine did not answer. Nothing moved.".to_owned()),
+    })
 }
 
 /// Approves or refuses one request, and applies it.
@@ -2605,6 +2703,11 @@ fn describe(action: AdminAction, account: u64) -> String {
         AdminAction::SetInsurance(m) => format!(
             "Insurance on {account} set to {}. It is out of the balance and the market cannot reach it.",
             m.to_decimal_string()
+        ),
+        AdminAction::Transfer { to, amount } => format!(
+            "Moved {} from {account} to {}. Both legs are one journal record, so there is no moment when the money is in neither.",
+            amount.to_decimal_string(),
+            to.0
         ),
         AdminAction::SetLive(true) => {
             format!("Account {account} is live. The money in it is the client's from now on.")

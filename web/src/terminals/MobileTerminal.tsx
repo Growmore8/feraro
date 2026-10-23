@@ -476,6 +476,8 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
               mine={gw.myDeposits}
               account={account.id}
               live={account.live}
+              accounts={gw.session?.accounts ?? []}
+              balance={account.balance}
               credit={account.credit}
               freeMargin={account.freeMargin}
               insurance={account.insurance}
@@ -487,6 +489,9 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
               onWithdraw={(payout, amount, note) => {
                 gw.requestWithdrawal(payout, amount, note)
                 window.setTimeout(() => gw.paymentMethods(), 250)
+              }}
+              onMove={(to, amount) => {
+                gw.transfer(to, amount)
               }}
               onSavePayout={(m) => {
                 gw.savePayoutMethod(m)
@@ -642,6 +647,10 @@ function totalsOf(lines: readonly StatementLine[]): readonly (readonly [string, 
     ['Withdrawals', showSigned(sum(['withdrawal']))],
     ['Bonus', showSigned(sum(['bonus']))],
     ['Adjustments', showSigned(sum(['adjustment']))],
+    // Both legs, so this reads zero when a client only moved money between
+    // their own accounts — which is the honest total: they are no better
+    // or worse off. It is non-zero only when one leg is outside the window.
+    ['Moved', showSigned(sum(['transferIn', 'transferOut']))],
   ]
 }
 

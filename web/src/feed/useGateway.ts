@@ -63,6 +63,7 @@ export interface GatewayView extends GatewayState {
   adminSettle(id: number, approve: boolean, detail: string): void
   adminRaise(kind: MoneyKind, account: number, amount: string, note: string): void
   requestWithdrawal(payout: number, amount: string, note: string): void
+  transfer(to: number, amount: string): void
   payoutMethods(): void
   savePayoutMethod(m: {
     id: number | null
@@ -320,6 +321,10 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     [],
   )
 
+  const transfer = useCallback((to: number, amount: string) => {
+    clientRef.current?.transfer(to, amount)
+  }, [])
+
   const requestWithdrawal = useCallback(
     (payout: number, amount: string, note: string) => {
       clientRef.current?.requestWithdrawal(payout, amount, note)
@@ -437,6 +442,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminSettle,
       adminRaise,
       requestWithdrawal,
+      transfer,
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,
@@ -480,6 +486,7 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminSettle,
       adminRaise,
       requestWithdrawal,
+      transfer,
       payoutMethods,
       savePayoutMethod,
       forgetPayoutMethod,

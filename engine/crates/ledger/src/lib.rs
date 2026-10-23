@@ -403,6 +403,39 @@ pub fn close_position(
     })
 }
 
+/// Money moved from one trader's cash to another's.
+///
+/// Two postings, both client books, no house book: nothing is created and
+/// the platform is neither richer nor poorer for it. The amount is given
+/// as it leaves, so `from` is debited and `to` credited by the same figure
+/// and the transaction nets to zero like every other.
+///
+/// Both accounts must hold the same currency. A transfer across currencies
+/// is a conversion, and this would silently book one at a rate of one.
+pub fn transfer(
+    id: TxId,
+    at: Timestamp,
+    from: AccountId,
+    to: AccountId,
+    currency: Currency,
+    amount: Money,
+) -> Result<Transaction, LedgerError> {
+    Ok(Transaction {
+        id,
+        at,
+        postings: vec![
+            Posting::new(
+                LedgerAccount::client(from, AccountKind::ClientCash, currency),
+                amount.neg()?,
+            ),
+            Posting::new(
+                LedgerAccount::client(to, AccountKind::ClientCash, currency),
+                amount,
+            ),
+        ],
+    })
+}
+
 /// Money moved between a trader's cash and their insurance.
 ///
 /// Signed as the trader's cash sees it: negative is money leaving the
@@ -665,6 +698,37 @@ mod tests {
 
     fn cash(currency: Currency) -> LedgerAccount {
         LedgerAccount::client(TRADER, AccountKind::ClientCash, currency)
+    }
+
+    #[test]
+    fn a_transfer_moves_money_between_clients_and_touches_no_house_book() {
+        let tx = transfer(
+            TxId(1),
+            Timestamp(0),
+            AccountId(1001),
+            AccountId(1002),
+            Currency::USD,
+            Money::parse("250.00").unwrap(),
+        )
+        .expect("balances");
+
+        assert_eq!(tx.postings.len(), 2);
+        // Nothing is created, so the transaction nets to zero like every
+        // other one. If it did not, the trial balance would stop reading
+        // balanced and the platform would have invented money.
+        let sum = tx
+            .postings
+            .iter()
+            .fold(Money::ZERO, |acc, p| acc.add(p.amount).unwrap());
+        assert_eq!(sum, Money::ZERO);
+
+        // Both sides are client cash. A house book on either side would mean
+        // the platform had taken a position in somebody else's money.
+        assert!(tx.postings.iter().all(|p| p.account.owner != AccountId(0)));
+        assert!(tx
+            .postings
+            .iter()
+            .all(|p| p.account.kind == AccountKind::ClientCash));
     }
 
     #[test]

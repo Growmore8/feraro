@@ -282,6 +282,12 @@ pub enum AdminAction {
     SetCredit(money::Money),
     /// Set aside, or release, money the market cannot reach.
     SetInsurance(money::Money),
+    /// Move money to another account, both legs in one event.
+    Transfer {
+        /// Where it goes. The account being administered is where it leaves.
+        to: AccountId,
+        amount: money::Money,
+    },
     /// Hold both sides of an instrument at once, or net them off.
     SetHedging(bool),
     /// Make the account live, or put it back to demo.
@@ -402,6 +408,57 @@ const STATEMENT_WINDOW: usize = 2_000;
 /// Reads the balance *after* the event from the portfolio it was just applied
 /// to — which is why this is called with both, and why the line cannot be
 /// rebuilt later from the event alone.
+/// Every statement line one event produces.
+///
+/// All but one movement touch a single account and make a single line. A
+/// transfer touches two, and both legs carry the same sequence number —
+/// they are one event, and a statement showing them at different moments
+/// would invite somebody to go looking for the money in between.
+fn statement_lines(
+    record: &domain::Record,
+    applied: &risk::Applied,
+    portfolio: &Portfolio,
+) -> Vec<(AccountId, StatementDto)> {
+    if let Event::FundsTransferred {
+        from, to, amount, ..
+    } = record.event
+    {
+        let out = amount.neg().unwrap_or(money::Money::ZERO);
+        return vec![
+            statement_line(record, portfolio, from, "transferOut", None, out),
+            statement_line(record, portfolio, to, "transferIn", None, amount),
+        ];
+    }
+    statement_entry(record, applied, portfolio)
+        .into_iter()
+        .collect()
+}
+
+/// One line, with the balance the account was left holding.
+fn statement_line(
+    record: &domain::Record,
+    portfolio: &Portfolio,
+    account: AccountId,
+    kind: &'static str,
+    ticket: Option<u64>,
+    amount: money::Money,
+) -> (AccountId, StatementDto) {
+    let balance = portfolio
+        .account(account)
+        .map_or(money::Money::ZERO, |a| a.balance);
+    (
+        account,
+        StatementDto {
+            seq: record.seq.0,
+            at: record.at.0 / 1_000_000,
+            kind,
+            ticket,
+            amount: money_str(amount),
+            balance: money_str(balance),
+        },
+    )
+}
+
 fn statement_entry(
     record: &domain::Record,
     applied: &risk::Applied,
@@ -497,19 +554,8 @@ fn statement_entry(
         _ => return None,
     };
 
-    let balance = portfolio
-        .account(account)
-        .map_or(Money::ZERO, |a| a.balance);
-    Some((
-        account,
-        StatementDto {
-            seq: record.seq.0,
-            at: record.at.0 / 1_000_000,
-            kind,
-            ticket,
-            amount: money_str(amount),
-            balance: money_str(balance),
-        },
+    Some(statement_line(
+        record, portfolio, account, kind, ticket, amount,
     ))
 }
 
@@ -579,6 +625,20 @@ fn post_to_books(
             currency_of(account),
             amount,
         )),
+        // Two client books and no house book: nothing is created, so the
+        // platform is neither richer nor poorer. The currency is read from
+        // the sending account because the engine refused the transfer
+        // unless both hold the same one.
+        Event::FundsTransferred {
+            from, to, amount, ..
+        } => Some(ledger::transfer(
+            id,
+            record.at,
+            from,
+            to,
+            currency_of(from),
+            amount,
+        )?),
         // Both pots are the client's, so this is a transfer rather than
         // money arriving: nothing is created and no house book moves.
         Event::InsuranceSet { account, .. } => match applied.insured {
@@ -748,6 +808,19 @@ fn audit_entry(record: &domain::Record) -> Option<AuditDto> {
             amount,
             by,
         } => (by, account, "withdrawal", money_str(amount)),
+        // Recorded against the account it left, naming where it went. One
+        // line, because it was one decision.
+        Event::FundsTransferred {
+            from,
+            to,
+            amount,
+            by,
+        } => (
+            by,
+            from,
+            "transfer",
+            format!("{} to account {}", money_str(amount), to.0),
+        ),
         Event::CreditSet {
             account,
             amount,
@@ -926,8 +999,8 @@ impl Engine {
             {
                 candles.observe(instrument, bid, ask, record.at.0);
             }
-            if let Some((account, line)) = statement_entry(&record, &applied, &portfolio) {
-                statement.push((account, line));
+            for line in statement_lines(&record, &applied, &portfolio) {
+                statement.push(line);
                 if statement.len() > STATEMENT_WINDOW {
                     statement.remove(0);
                 }
@@ -1075,7 +1148,7 @@ impl Engine {
 
     /// Adds a money movement to the statement window.
     fn remember_money(&mut self, record: &domain::Record, applied: &risk::Applied) {
-        if let Some(entry) = statement_entry(record, applied, &self.portfolio) {
+        for entry in statement_lines(record, applied, &self.portfolio) {
             self.statement.push(entry);
             if self.statement.len() > STATEMENT_WINDOW {
                 self.statement.remove(0);
@@ -2535,6 +2608,65 @@ impl Engine {
                 }
                 Event::InsuranceSet {
                     account,
+                    amount,
+                    by,
+                }
+            }
+            AdminAction::Transfer { to, amount } => {
+                if amount <= money::Money::ZERO {
+                    return Ok(AdminOutcome::Refused("a transfer must be positive"));
+                }
+                if to == account {
+                    return Ok(AdminOutcome::Refused(
+                        "that is the same account \u{2014} nothing would move",
+                    ));
+                }
+                let Some(source) = self.portfolio.account(account) else {
+                    return Ok(AdminOutcome::Refused("no such account to send from"));
+                };
+                let Some(target) = self.portfolio.account(to) else {
+                    return Ok(AdminOutcome::Refused("no such account to send to"));
+                };
+                // Practice money must never reach a live account, and real
+                // money must never be spent practising. This is the refusal
+                // that matters most here: everything else on this list
+                // costs somebody a day, and this one would put invented
+                // figures into a balance a client can withdraw.
+                if source.live != target.live {
+                    return Ok(AdminOutcome::Refused(
+                        "a demo account and a live one hold different kinds of money, and it does not cross",
+                    ));
+                }
+                // No rate exists to apply, and applying one of 1.0 silently
+                // would be worse than refusing.
+                if source.currency != target.currency {
+                    return Ok(AdminOutcome::Refused(
+                        "the two accounts hold different currencies, and this platform does not convert",
+                    ));
+                }
+                if !target.tradeable {
+                    return Ok(AdminOutcome::Refused(
+                        "that account is suspended \u{2014} reinstate it before sending money into it",
+                    ));
+                }
+                // Free margin, then cash, exactly as a withdrawal is
+                // judged. Money holding a position up is not available to
+                // move, and the bonus is not the client's to move at all.
+                let free = source.free_margin(&self.portfolio.market, self.policy)?;
+                if amount > free {
+                    return Ok(AdminOutcome::Refused(
+                        "more than the account's free margin \u{2014} close positions first",
+                    ));
+                }
+                let cash = ledger::withdrawable(&self.ledger, account, self.currency_of(account));
+                if amount > cash {
+                    return Ok(AdminOutcome::Refused(
+                        "more than the account's cash \u{2014} the rest is non-withdrawable bonus",
+                    ));
+                }
+                Event::FundsTransferred {
+                    from: account,
+                    to,
                     amount,
                     by,
                 }
@@ -5407,6 +5539,234 @@ mod tests {
         assert_eq!(again.portfolio.account(TRADER).unwrap().insurance, held);
         assert_eq!(balance_of(&again, TRADER), balance);
         books_agree(&again);
+    }
+
+    // ── Transfers ─────────────────────────────────────────────────────
+
+    #[test]
+    fn money_moves_between_two_accounts_and_the_platform_is_no_richer() {
+        let s = Scratch::new("transfer");
+        let (mut e, _rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        // Both the client's, so the transfer is between accounts one person
+        // holds \u2014 which is the case this exists for.
+        administer(&mut e, other, AdminAction::SetLive(false));
+
+        let from_before = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        let to_before = money::Money::parse(&balance_of(&e, other)).unwrap();
+
+        let outcome = administer(
+            &mut e,
+            TRADER,
+            AdminAction::Transfer {
+                to: other,
+                amount: m("1500.00"),
+            },
+        );
+        assert!(matches!(outcome, AdminOutcome::Done), "{outcome:?}");
+
+        let from_after = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        let to_after = money::Money::parse(&balance_of(&e, other)).unwrap();
+        assert_eq!(from_before.sub(from_after).unwrap(), m("1500.00"));
+        assert_eq!(to_after.sub(to_before).unwrap(), m("1500.00"));
+        // The two sides are the same figure, so the pair of balances sums to
+        // what it did before. Nothing was created.
+        assert_eq!(
+            from_after.add(to_after).unwrap(),
+            from_before.add(to_before).unwrap()
+        );
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_transfer_is_one_record_so_a_replay_cannot_land_between_the_legs() {
+        // The whole reason this is one event. If it were a withdrawal
+        // followed by a deposit, a journal truncated between them would
+        // replay to a state where the money had left and arrived nowhere \u2014
+        // and the journal is the database, so that state would be the truth.
+        let s = Scratch::new("transfer-replay");
+        let other;
+        let (sum_before, sum_after, seq_count) = {
+            let (mut e, _rx) = engine(&s.0);
+            other = second_account(&mut e);
+            administer(&mut e, other, AdminAction::SetLive(false));
+            let before = money::Money::parse(&balance_of(&e, TRADER))
+                .unwrap()
+                .add(money::Money::parse(&balance_of(&e, other)).unwrap())
+                .unwrap();
+            let at = e.journal.next_seq().0;
+            administer(
+                &mut e,
+                TRADER,
+                AdminAction::Transfer {
+                    to: other,
+                    amount: m("2000.00"),
+                },
+            );
+            let after = money::Money::parse(&balance_of(&e, TRADER))
+                .unwrap()
+                .add(money::Money::parse(&balance_of(&e, other)).unwrap())
+                .unwrap();
+            (before, after, e.journal.next_seq().0 - at)
+        };
+        assert_eq!(sum_before, sum_after);
+        assert_eq!(seq_count, 1, "a transfer is exactly one journal record");
+
+        // And it replays to the same place.
+        let (again, _rx) = engine(&s.0);
+        let replayed = money::Money::parse(&balance_of(&again, TRADER))
+            .unwrap()
+            .add(money::Money::parse(&balance_of(&again, other)).unwrap())
+            .unwrap();
+        assert_eq!(replayed, sum_after);
+        books_agree(&again);
+    }
+
+    #[test]
+    fn practice_money_never_reaches_a_live_account() {
+        // The refusal that matters most: everything else on the list costs
+        // somebody a day, and this one would put invented figures into a
+        // balance a client can withdraw.
+        let s = Scratch::new("transfer-demo");
+        let (mut e, _rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        administer(&mut e, other, AdminAction::SetLive(true));
+
+        let before = balance_of(&e, other);
+        let outcome = administer(
+            &mut e,
+            TRADER,
+            AdminAction::Transfer {
+                to: other,
+                amount: m("100.00"),
+            },
+        );
+        assert!(matches!(outcome, AdminOutcome::Refused(_)), "{outcome:?}");
+        assert_eq!(balance_of(&e, other), before, "nothing moved");
+
+        // And not the other way either.
+        let back = administer(
+            &mut e,
+            other,
+            AdminAction::Transfer {
+                to: TRADER,
+                amount: m("100.00"),
+            },
+        );
+        assert!(matches!(back, AdminOutcome::Refused(_)), "{back:?}");
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_transfer_is_refused_for_the_same_reasons_a_withdrawal_is() {
+        let s = Scratch::new("transfer-refusals");
+        let (mut e, _rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        administer(&mut e, other, AdminAction::SetLive(false));
+        let before = balance_of(&e, TRADER);
+
+        for (what, action) in [
+            (
+                "zero",
+                AdminAction::Transfer {
+                    to: other,
+                    amount: money::Money::ZERO,
+                },
+            ),
+            (
+                "itself",
+                AdminAction::Transfer {
+                    to: TRADER,
+                    amount: m("10.00"),
+                },
+            ),
+            (
+                "an account that does not exist",
+                AdminAction::Transfer {
+                    to: AccountId(999_999),
+                    amount: m("10.00"),
+                },
+            ),
+            (
+                "more than is there",
+                AdminAction::Transfer {
+                    to: other,
+                    amount: m("9999999.00"),
+                },
+            ),
+        ] {
+            let outcome = administer(&mut e, TRADER, action);
+            assert!(
+                matches!(outcome, AdminOutcome::Refused(_)),
+                "{what} went through: {outcome:?}"
+            );
+            assert_eq!(balance_of(&e, TRADER), before, "{what} moved money");
+        }
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_bonus_cannot_be_moved_onto_another_account() {
+        // A bonus supports margin but is not the client's. Letting it move
+        // would let a client park it where the condition that earned it does
+        // not apply, and then withdraw from there.
+        let s = Scratch::new("transfer-bonus");
+        let (mut e, _rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        administer(&mut e, other, AdminAction::SetLive(false));
+
+        // Everything in cash goes out, leaving only bonus behind.
+        let cash_here = cash(&e, TRADER);
+        administer(&mut e, TRADER, AdminAction::Withdraw(cash_here));
+        administer(&mut e, TRADER, AdminAction::SetCredit(m("500.00")));
+
+        let outcome = administer(
+            &mut e,
+            TRADER,
+            AdminAction::Transfer {
+                to: other,
+                amount: m("100.00"),
+            },
+        );
+        assert!(matches!(outcome, AdminOutcome::Refused(_)), "{outcome:?}");
+        books_agree(&e);
+    }
+
+    #[test]
+    fn both_sides_of_a_transfer_are_on_the_statement_at_the_same_moment() {
+        let s = Scratch::new("transfer-statement");
+        let (mut e, _rx) = engine(&s.0);
+        let other = second_account(&mut e);
+        administer(&mut e, other, AdminAction::SetLive(false));
+
+        administer(
+            &mut e,
+            TRADER,
+            AdminAction::Transfer {
+                to: other,
+                amount: m("300.00"),
+            },
+        );
+
+        let out = e
+            .statement
+            .iter()
+            .rev()
+            .find(|(id, l)| *id == TRADER && l.kind == "transferOut")
+            .expect("the sending account has a line");
+        let into = e
+            .statement
+            .iter()
+            .rev()
+            .find(|(id, l)| *id == other && l.kind == "transferIn")
+            .expect("the receiving account has a line");
+
+        // One event, so one sequence number. A statement that showed the two
+        // legs at different moments would invite somebody to go looking for
+        // the money in between.
+        assert_eq!(out.1.seq, into.1.seq);
+        assert!(out.1.amount.starts_with('-'), "{}", out.1.amount);
+        assert!(!into.1.amount.starts_with('-'), "{}", into.1.amount);
     }
 
     fn books_agree(e: &Engine) {

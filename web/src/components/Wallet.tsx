@@ -1,11 +1,12 @@
 /**
  * Everything a client does with their money that is not a trade.
  *
- * Three things, behind three tabs, because they are done at different
- * times: pay in now, ask to be paid out later, and keep the places you are
- * paid to. Splitting them across three menu items would hide the one a
- * client is looking for; putting them on one scrolling page would put a
- * withdrawal form under the finger of somebody trying to deposit.
+ * Four things, behind four tabs, because they are done at different times:
+ * pay in now, move money between your own accounts, ask to be paid out
+ * later, and keep the places you are paid to. Splitting them across four
+ * menu items would hide the one a client is looking for; putting them on
+ * one scrolling page would put a withdrawal form under the finger of
+ * somebody trying to deposit.
  *
  * # Nothing here moves money
  *
@@ -14,6 +15,10 @@
  * out joins the desk's queue. In both directions a person at the desk
  * checks, and the account changes then — not when a button is pressed.
  *
+ * Moving money between the client's own accounts is the exception, and the
+ * tab says so: nothing enters or leaves the platform, so there is nothing
+ * for anybody to check and it happens at once.
+ *
  * The screen says so in those words, because a client who believes the
  * button paid them comes back angry in ten minutes, and one who was told
  * the desk has to check will wait.
@@ -21,9 +26,16 @@
 
 import { useState } from 'react'
 import { KIND_WORD } from '../feed/gateway'
-import type { DepositRequest, PaymentMethod, PayoutMethod, Rail } from '../feed/gateway'
+import type {
+  DepositRequest,
+  GatewayAccountSummary,
+  PaymentMethod,
+  PayoutMethod,
+  Rail,
+} from '../feed/gateway'
 import type { Money } from '../lib/money'
 import { DepositSheet } from './DepositSheet'
+import { MoveForm } from './MoveForm'
 import { PayoutBook } from './PayoutBook'
 import { WithdrawForm } from './WithdrawForm'
 
@@ -35,7 +47,7 @@ const WHEN = new Intl.DateTimeFormat(undefined, {
   hour12: false,
 })
 
-export type WalletTab = 'in' | 'out' | 'where'
+export type WalletTab = 'in' | 'move' | 'out' | 'where'
 
 export interface WalletProps {
   readonly methods: readonly PaymentMethod[]
@@ -45,6 +57,9 @@ export interface WalletProps {
   readonly account: number
   /** False on a demo account, where there is nothing real to send. */
   readonly live: boolean
+  /** Every account this client holds, for moving money between them. */
+  readonly accounts: readonly GatewayAccountSummary[]
+  readonly balance: Money
   /** Outstanding bonus, which must be cleared before anything may leave. */
   readonly credit: Money
   readonly freeMargin: Money
@@ -52,6 +67,7 @@ export interface WalletProps {
   readonly start?: WalletTab
   onDeposit(method: number, amount: string, reference: string): void
   onWithdraw(payout: number, amount: string, note: string): void
+  onMove(to: number, amount: string): void
   onSavePayout(m: {
     id: number | null
     rail: Rail
@@ -69,12 +85,15 @@ export function Wallet({
   mine,
   account,
   live,
+  accounts,
+  balance,
   credit,
   freeMargin,
   insurance,
   start = 'in',
   onDeposit,
   onWithdraw,
+  onMove,
   onSavePayout,
   onForgetPayout,
 }: WalletProps) {
@@ -91,6 +110,13 @@ export function Wallet({
           onClick={() => setTab('in')}
         >
           Pay in
+        </button>
+        <button
+          type="button"
+          className={tab === 'move' ? 'on' : undefined}
+          onClick={() => setTab('move')}
+        >
+          Move
         </button>
         <button
           type="button"
@@ -115,6 +141,18 @@ export function Wallet({
           mine={mine.filter((r) => r.kind === 'deposit')}
           account={account}
           onRequest={onDeposit}
+        />
+      ) : null}
+
+      {tab === 'move' ? (
+        <MoveForm
+          accounts={accounts}
+          from={account}
+          live={live}
+          balance={balance}
+          freeMargin={freeMargin}
+          credit={credit}
+          onMove={onMove}
         />
       ) : null}
 

@@ -1581,3 +1581,93 @@
   padding-top: 3px;
   padding-bottom: 3px;
 }
+
+
+/* ── Moving money between your own accounts ──
+
+   The one movement with no queue behind it: nothing enters or leaves the
+   platform, so there is nothing for anybody to check. The accounts are
+   offered as cards with their balances on them, because the question a
+   client is answering is "which of mine", and an account number alone does
+   not answer it. */
+
+.mv { display: flex; flex-direction: column; gap: 12px; }
+
+.mv-none { margin: 0; padding: 14px 4px; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); }
+
+.mv-figures { display: flex; flex-wrap: wrap; gap: 20px; }
+
+.mv-figures > div { display: flex; flex-direction: column; gap: 2px; }
+
+.mv-free { font-size: 17px; font-weight: 600; }
+
+.mv-where { display: flex; flex-direction: column; gap: 5px; }
+
+.mv-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.mv-picks button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 128px;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--chrome);
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.mv-picks button.on {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.mv-id { font-size: 13px; font-weight: 600; }
+
+.mv-kind {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.mv-bal { font-size: 11.5px; color: var(--ink-3); }
+
+.mv-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+.mv-form label { flex: 1 1 150px; display: flex; flex-direction: column; gap: 3px; }
+
+.mv-form input {
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.mv-go {
+  flex: none;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mv-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.mv-too { flex: 1 1 100%; margin: 0; font-size: 11.5px; color: var(--loss); }
+
+.mv-sent { flex: 1 1 100%; margin: 0; font-size: 11.5px; color: var(--profit); }
+
+.mv-says { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }

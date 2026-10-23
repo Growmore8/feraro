@@ -502,6 +502,26 @@ impl Realised {
     }
 }
 
+/// One fill, as [`Account::fill`] takes it.
+///
+/// Named rather than positional, and not only to quiet a lint: `price` and
+/// `rate` are both a [`Price`], sit next to each other, and mean completely
+/// different things. A call that swapped them would compile, and every
+/// figure downstream of it would be wrong in a way no test name would
+/// point at.
+#[derive(Debug, Clone, Copy)]
+struct Fill {
+    instrument: InstrumentId,
+    ticket: OrderId,
+    side: Side,
+    qty: Qty,
+    price: Price,
+    /// Units of the instrument's quote currency per unit of the account's.
+    /// One when they are the same.
+    rate: Price,
+    commission: Money,
+}
+
 /// One parcel of an open position, retained so closes are FIFO.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lot {
@@ -931,16 +951,16 @@ impl Account {
     /// second later still cost it. It is deliberately *not* part of
     /// `Realised` — that is what the position made, and a charge for
     /// opening it is not profit.
-    fn fill(
-        &mut self,
-        instrument: InstrumentId,
-        ticket: OrderId,
-        side: Side,
-        qty: Qty,
-        price: Price,
-        rate: Price,
-        commission: Money,
-    ) -> Result<Realised, RiskError> {
+    fn fill(&mut self, fill: Fill) -> Result<Realised, RiskError> {
+        let Fill {
+            instrument,
+            ticket,
+            side,
+            qty,
+            price,
+            rate,
+            commission,
+        } = fill;
         // Before any branch. A hedging account returns early a few lines
         // down, and a charge that only some accounts pay is a bug nobody
         // would find until a client asked why.
@@ -1257,15 +1277,15 @@ pub fn margin_needed(
             None => RiskError::UnknownInstrument(order.instrument),
         }
     })?;
-    hypothetical.fill(
-        order.instrument,
-        OrderId(0),
-        order.side,
-        order.qty,
-        fill_price,
+    hypothetical.fill(Fill {
+        instrument: order.instrument,
+        ticket: OrderId(0),
+        side: order.side,
+        qty: order.qty,
+        price: fill_price,
         rate,
-        order.commission,
-    )?;
+        commission: order.commission,
+    })?;
     let after = hypothetical.used_margin(market, policy)?;
 
     Ok(if after > before {
@@ -1701,6 +1721,33 @@ impl Portfolio {
                     .ok_or(RiskError::UnknownAccount(account))?;
                 a.balance = a.balance.sub(amount)?;
             }
+            Event::FundsTransferred {
+                from, to, amount, ..
+            } => {
+                // Both sides are checked before either moves. A fold that
+                // debited and then found the other account missing would
+                // leave the money nowhere, which is the exact failure the
+                // single event exists to prevent — and on a replay there is
+                // nobody to tell.
+                if !self.accounts.contains_key(&from) {
+                    return Err(RiskError::UnknownAccount(from));
+                }
+                if !self.accounts.contains_key(&to) {
+                    return Err(RiskError::UnknownAccount(to));
+                }
+                // Likewise the arithmetic: both are computed, and only then
+                // are both written.
+                let out = self.accounts[&from].balance.sub(amount)?;
+                let into = self.accounts[&to].balance.add(amount)?;
+                self.accounts
+                    .get_mut(&from)
+                    .ok_or(RiskError::UnknownAccount(from))?
+                    .balance = out;
+                self.accounts
+                    .get_mut(&to)
+                    .ok_or(RiskError::UnknownAccount(to))?
+                    .balance = into;
+            }
             Event::InsuranceSet {
                 account, amount, ..
             } => {
@@ -1791,8 +1838,15 @@ impl Portfolio {
                     .accounts
                     .get_mut(&owner)
                     .ok_or(RiskError::UnknownAccount(owner))?;
-                let realised =
-                    account.fill(instrument, order, side, qty, price, rate, commission)?;
+                let realised = account.fill(Fill {
+                    instrument,
+                    ticket: order,
+                    side,
+                    qty,
+                    price,
+                    rate,
+                    commission,
+                })?;
                 applied.realised = Some((owner, realised));
             }
             Event::PositionStoppedOut {
@@ -1817,7 +1871,15 @@ impl Portfolio {
                         .map(|l| l.side.opposite())
                         .unwrap_or(Side::Sell);
                     // A stop-out closes; it charges no commission to do it.
-                    a.fill(instrument, OrderId(0), side, qty, price, rate, Money::ZERO)?
+                    a.fill(Fill {
+                        instrument,
+                        ticket: OrderId(0),
+                        side,
+                        qty,
+                        price,
+                        rate,
+                        commission: Money::ZERO,
+                    })?
                 } else {
                     a.close_lot(instrument, order, price, rate)?
                 };
@@ -2234,15 +2296,15 @@ mod tests {
         let policy = MarginPolicy::default();
 
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("0.10"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // Margin is marked to the bid the position would close at.
@@ -2277,26 +2339,26 @@ mod tests {
     fn a_long_is_valued_at_the_bid_and_a_short_at_the_ask() {
         let (mut account, market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                ETH,
-                OrderId(2),
-                Side::Sell,
-                q("1"),
-                p("2601.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: ETH,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("1"),
+                price: p("2601.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // The long lost the spread; the short gained it back.
@@ -2315,15 +2377,15 @@ mod tests {
         let (mut account, market) = setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("0.10"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         let level = account.margin_level_bp(&market, policy).unwrap().unwrap();
@@ -2375,15 +2437,15 @@ mod tests {
         let (mut account, mut market) = setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // Price collapses; the account is deep under water.
@@ -2567,39 +2629,39 @@ mod tests {
     fn closing_is_fifo_and_realises_profit_into_the_balance() {
         let (mut account, _) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("70000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("70000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // Selling one closes the OLDER parcel, at 70,000, for +15,000.
         let realised = account
-            .fill(
-                BTC,
-                OrderId(3),
-                Side::Sell,
-                q("1"),
-                p("85000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(3),
+                side: Side::Sell,
+                qty: q("1"),
+                price: p("85000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         assert_eq!(
             realised.total().unwrap().to_display_string(2).unwrap(),
@@ -2616,26 +2678,26 @@ mod tests {
     fn an_oversized_close_flips_the_position() {
         let (mut account, _) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Sell,
-                q("3"),
-                p("81000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("3"),
+                price: p("81000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         let left = account.lots(BTC);
@@ -2653,15 +2715,15 @@ mod tests {
         // 1.2 BTC at 1:100 needs ~960 margin. Equity has to fall below that.
         account.balance = m("1000.00");
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1.2"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1.2"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         market.quote(BTC, p("79800.00"), p("79810.00"));
@@ -2681,15 +2743,15 @@ mod tests {
         let policy = MarginPolicy::default();
         account.balance = m("1000.00");
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1.2"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1.2"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         market.quote(BTC, p("79800.00"), p("79810.00"));
@@ -2716,26 +2778,26 @@ mod tests {
         account.balance = m("2000.00");
 
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                ETH,
-                OrderId(2),
-                Side::Buy,
-                q("10"),
-                p("2600.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: ETH,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("10"),
+                price: p("2600.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // BTC falls 2,000 (a 2,000 loss); ETH falls 20 (a 200 loss).
@@ -2760,26 +2822,26 @@ mod tests {
         account.balance = m("2000.00");
 
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                ETH,
-                OrderId(2),
-                Side::Buy,
-                q("1"),
-                p("2600.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: ETH,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("2600.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         market.quote(BTC, p("78400.00"), p("78410.00"));
@@ -2802,15 +2864,15 @@ mod tests {
         let policy = MarginPolicy::default();
         account.balance = m("100.00");
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         market.quote(BTC, p("40000.00"), p("40010.00"));
@@ -2828,15 +2890,15 @@ mod tests {
     fn margin_basis_changes_what_a_position_ties_up() {
         let (mut account, mut market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         market.quote(BTC, p("90000.00"), p("90010.00"));
 
@@ -2906,6 +2968,88 @@ mod tests {
             at: Timestamp(seq as i64),
             event,
         }
+    }
+
+    #[test]
+    fn a_transfer_checks_both_accounts_before_either_balance_moves() {
+        // The point of the single event is that there is no state where the
+        // money has left and arrived nowhere. The fold has to honour that
+        // too: a debit applied before discovering the other side is missing
+        // would produce exactly that state, on every replay, with nobody to
+        // tell.
+        let mut pf = Portfolio::new();
+        let other = AccountId(1002);
+        for (i, e) in [
+            Event::AccountOpened {
+                account: TRADER,
+                currency: Currency::USD,
+                leverage: 100,
+            },
+            Event::AccountOpened {
+                account: other,
+                currency: Currency::USD,
+                leverage: 100,
+            },
+            Event::FundsDeposited {
+                account: TRADER,
+                amount: m("10000.00"),
+                by: UserId::SYSTEM,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            pf.apply(&rec(i as u64, e)).expect("applies");
+        }
+
+        let before = pf.account(TRADER).unwrap().balance;
+
+        // A transfer to an account nobody opened.
+        let missing = pf.apply(&rec(
+            10,
+            Event::FundsTransferred {
+                from: TRADER,
+                to: AccountId(9_999),
+                amount: m("100.00"),
+                by: UserId(1),
+            },
+        ));
+        assert!(missing.is_err(), "it should not fold");
+        assert_eq!(
+            pf.account(TRADER).unwrap().balance,
+            before,
+            "the sending balance moved anyway"
+        );
+
+        // And one from an account nobody opened.
+        let backwards = pf.apply(&rec(
+            11,
+            Event::FundsTransferred {
+                from: AccountId(9_999),
+                to: TRADER,
+                amount: m("100.00"),
+                by: UserId(1),
+            },
+        ));
+        assert!(backwards.is_err());
+        assert_eq!(pf.account(TRADER).unwrap().balance, before);
+
+        // The real one moves both, and the pair sums to what it did.
+        pf.apply(&rec(
+            12,
+            Event::FundsTransferred {
+                from: TRADER,
+                to: other,
+                amount: m("2500.00"),
+                by: UserId(1),
+            },
+        ))
+        .expect("applies");
+        let from = pf.account(TRADER).unwrap().balance;
+        let into = pf.account(other).unwrap().balance;
+        assert_eq!(before.sub(from).unwrap(), m("2500.00"));
+        assert_eq!(into, m("2500.00"));
+        assert_eq!(from.add(into).unwrap(), before);
     }
 
     #[test]
@@ -3243,15 +3387,15 @@ mod tests {
     fn accrued_swap_moves_equity_but_not_the_balance() {
         let (mut account, market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         let equity_before = account.equity(&market).unwrap();
 
@@ -3270,30 +3414,30 @@ mod tests {
     fn closing_realises_the_swap_into_the_balance() {
         let (mut account, _) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-21.92")).unwrap();
         account.charge_swap(BTC, OrderId(1), m("-21.92")).unwrap();
 
         // Close flat on price, so the only thing realised is the financing.
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Sell,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         assert_eq!(account.balance.to_display_string(2).unwrap(), "9956.16");
@@ -3305,29 +3449,29 @@ mod tests {
     fn a_partial_close_takes_its_share_and_leaves_the_rest() {
         let (mut account, _) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("3"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("3"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         // An amount that does not divide by three.
         account.charge_swap(BTC, OrderId(1), m("-10.00")).unwrap();
 
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Sell,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         let realised = account.balance.sub(m("10000.00")).unwrap();
@@ -3352,29 +3496,29 @@ mod tests {
         // the rounding accumulates into a swap nobody is ever charged.
         let (mut account, _) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("7"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("7"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-1.00")).unwrap();
 
         for i in 0..7 {
             account
-                .fill(
-                    BTC,
-                    OrderId(10 + i),
-                    Side::Sell,
-                    q("1"),
-                    p("80000.00"),
-                    Price::ONE,
-                    Money::ZERO,
-                )
+                .fill(Fill {
+                    instrument: BTC,
+                    ticket: OrderId(10 + i),
+                    side: Side::Sell,
+                    qty: q("1"),
+                    price: p("80000.00"),
+                    rate: Price::ONE,
+                    commission: Money::ZERO,
+                })
                 .unwrap();
         }
 
@@ -3392,15 +3536,15 @@ mod tests {
         let policy = MarginPolicy::default();
         account.balance = m("100.00");
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account.charge_swap(BTC, OrderId(1), m("-5.00")).unwrap();
 
@@ -3496,15 +3640,15 @@ mod tests {
 
         // One lot long: 1 BTC at the bid, 80,000, at 1:100 is 800.
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         assert_eq!(
             account
@@ -3518,15 +3662,15 @@ mod tests {
         // Hedge it exactly. Both sides are 800 of margin; matched is 800, and
         // nothing is left exposed — so the pair ties up 25% of 800.
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Sell,
-                q("1"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("1"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         // `fill` closes opposing lots first, so an opposing order of the same
         // size *closes* rather than hedges. Both legs have to be opened
@@ -3545,15 +3689,15 @@ mod tests {
         let (mut account, market) = setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("3"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("3"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         // Add a short leg directly beside the long one.
         if let Some(lots) = account.lots.get_mut(&BTC) {
@@ -3589,15 +3733,15 @@ mod tests {
     fn a_full_hedge_charged_at_nothing_is_a_policy_not_a_default() {
         let (mut account, market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         if let Some(lots) = account.lots.get_mut(&BTC) {
             lots.push(Lot {
@@ -3649,26 +3793,26 @@ mod tests {
         let (mut account, market) = setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("1"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                ETH,
-                OrderId(2),
-                Side::Sell,
-                q("10"),
-                p("2600.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: ETH,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("10"),
+                price: p("2600.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // BTC long: 800.00. ETH short at the ask, 2,601, on 10: 260.10.
@@ -3682,15 +3826,15 @@ mod tests {
     fn long_btc() -> (Account, Market) {
         let (mut account, market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("0.10"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         (account, market)
     }
@@ -3730,15 +3874,15 @@ mod tests {
     fn a_short_s_levels_are_the_mirror_image() {
         let (mut account, _market) = setup();
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Sell,
-                q("0.10"),
-                p("80000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("0.10"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
             .set_protection(BTC, OrderId(2), p("81000.00"), p("79000.00"))
@@ -3827,15 +3971,15 @@ mod tests {
         // one position's stop because another was opened.
         let (mut account, _market) = long_btc();
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Buy,
-                q("0.10"),
-                p("81000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("81000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
             .set_protection(BTC, OrderId(1), p("79000.00"), Price::ZERO)
@@ -3860,15 +4004,15 @@ mod tests {
     fn closing_by_ticket_closes_that_parcel_and_not_the_oldest() {
         let (mut account, _market) = long_btc();
         account
-            .fill(
-                BTC,
-                OrderId(2),
-                Side::Buy,
-                q("0.10"),
-                p("90000.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("90000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         let opening = account.balance;
 
@@ -4166,15 +4310,15 @@ mod tests {
         let (mut account, market) = setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("0.10"),
-                p("80010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("80010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         account.tradeable = false;
@@ -4312,15 +4456,15 @@ mod tests {
         let (mut account, mut market) = jpy_setup();
         // Long 100,000 USD against yen at the ask, 147.508.
         account
-            .fill(
-                USDJPY,
-                OrderId(1),
-                Side::Buy,
-                q("100000"),
-                p("147.508"),
-                p("147.504"),
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: USDJPY,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("100000"),
+                price: p("147.508"),
+                rate: p("147.504"),
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // The yen falls to 148.500 / 148.508: the long is up.
@@ -4333,15 +4477,15 @@ mod tests {
         assert_eq!(floating.to_display_string(2).unwrap(), "668.00");
 
         let realised = account
-            .fill(
-                USDJPY,
-                OrderId(2),
-                Side::Sell,
-                q("100000"),
-                p("148.500"),
-                p("148.504"),
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: USDJPY,
+                ticket: OrderId(2),
+                side: Side::Sell,
+                qty: q("100000"),
+                price: p("148.500"),
+                rate: p("148.504"),
+                commission: Money::ZERO,
+            })
             .unwrap();
         assert_eq!(
             realised.total().unwrap().to_display_string(2).unwrap(),
@@ -4359,15 +4503,15 @@ mod tests {
         let (mut account, market) = jpy_setup();
         let policy = MarginPolicy::default();
         account
-            .fill(
-                USDJPY,
-                OrderId(1),
-                Side::Buy,
-                q("100000"),
-                p("147.508"),
-                p("147.504"),
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: USDJPY,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("100000"),
+                price: p("147.508"),
+                rate: p("147.504"),
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // Notional is 100,000 × 147.500 = 14,750,000 yen; at 1:100 that is
@@ -4500,26 +4644,26 @@ mod tests {
         let mut account = Account::new(TRADER, Currency::USD, 100, m("10000.00"));
         // Long BTC, then long yen. Both will be underwater.
         account
-            .fill(
-                BTC,
-                OrderId(1),
-                Side::Buy,
-                q("0.10"),
-                p("81010.00"),
-                Price::ONE,
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("0.10"),
+                price: p("81010.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
             .unwrap();
         account
-            .fill(
-                USDJPY,
-                OrderId(2),
-                Side::Buy,
-                q("100000"),
-                p("147.608"),
-                p("147.504"),
-                Money::ZERO,
-            )
+            .fill(Fill {
+                instrument: USDJPY,
+                ticket: OrderId(2),
+                side: Side::Buy,
+                qty: q("100000"),
+                price: p("147.608"),
+                rate: p("147.504"),
+                commission: Money::ZERO,
+            })
             .unwrap();
 
         // BTC is down 1,010 per coin on 0.10 — about 101 dollars.

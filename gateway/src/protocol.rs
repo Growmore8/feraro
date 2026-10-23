@@ -144,6 +144,18 @@ pub enum ClientMessage {
         #[serde(default)]
         note: String,
     },
+    /// Move money from the account this session is on to another.
+    ///
+    /// Not an administrator's message, which is why it is not named like
+    /// one: a client moving their own money between their own accounts is
+    /// their business, and the gateway checks whose accounts these are
+    /// rather than who is asking.
+    #[serde(rename_all = "camelCase")]
+    Transfer {
+        /// Where it goes. Where it leaves is the selected account.
+        to: u64,
+        amount: String,
+    },
     /// Where this client's money may be sent.
     PayoutMethods,
     /// Client: save somewhere to be paid. A null id adds a new one.

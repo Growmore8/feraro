@@ -48,13 +48,17 @@ replay. That is the cost of this architecture and it is paid deliberately.
       the spread they produce; the client's **wallet** — pay in, withdraw,
       and the payout book — on the desktop and on the phone; and insurance
       raised from an account's own menu into the same queue.
+- [x] **Transfer between accounts** *(engine)* — one event carrying both
+      legs, so no replay can land on a state where the money has left one
+      account and arrived nowhere. Demo and live never mix; the bonus
+      cannot be parked elsewhere; both legs appear on their statements with
+      one sequence number. A client moves their own money without asking;
+      money between two people is an administrator's.
 
 ## Next, in order
 
 Ordered by what a broker needs to operate, not by size.
 
-- [ ] **Transfer between accounts** *(engine)* — one event carrying both
-      legs, so a crash cannot leave half a transfer.
 - [ ] **Two-factor for desk logins** — TOTP. A login that can move money is
       single-factor today.
 - [ ] **Partial close** *(engine)* and **modify an open trade**.
