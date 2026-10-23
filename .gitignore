@@ -38,6 +38,10 @@ users.json
 caddy-data/
 caddy-config/
 
+# Screenshots and references dropped in the working copy while building.
+/image*.png
+/*.png
+
 .vscode/
 .idea/
 *.swp
