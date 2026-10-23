@@ -49,6 +49,7 @@ caddy-config/
 # Output from a gateway started by hand while testing.
 gateway/gw.log
 gateway/gw.err
+web/vite.log
 
 .vscode/
 .idea/

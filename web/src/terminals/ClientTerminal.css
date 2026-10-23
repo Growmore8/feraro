@@ -135,16 +135,27 @@
 
 /* ── Body ── */
 
+/* Market watch, chart, order rail — left to right, with the blotter under
+   the middle column. The watch is on the left because it is read first and
+   read constantly: a trader's eye starts at the symbol list and moves
+   right to the chart and then to the ticket, and a layout that runs the
+   other way makes them cross the screen for every trade.
+
+   The rail is docked rather than floating over the candles. A panel that
+   covers the thing it is about is a panel somebody drags out of the way
+   before they can use it. */
+
 .body {
   flex-grow: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 306px;
+  grid-template-columns: 274px 1px minmax(0, 1fr) 1px 318px;
   gap: 1px;
   background: var(--rule);
 }
 
 .col-main,
+.col-rail,
 .col-dock {
   display: flex;
   flex-direction: column;
@@ -284,15 +295,16 @@
 
 /* ── Order ticket ── */
 
+/* Docked, not floating: it fills its column and scrolls if the window is
+   short, rather than sitting at a fixed offset that is wrong on every
+   screen but the one it was measured on. */
 .ticket {
-  position: absolute;
-  left: 372px;
-  top: 232px;
-  width: 336px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-grow: 1;
   background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  box-shadow: var(--shadow-float);
-  z-index: 15;
+  overflow-y: auto;
 }
 
 .ticket-head {
@@ -665,9 +677,15 @@
   }
 
   /* One column, and the dock above the chart: prices are what a phone is
-     opened for. */
+     opened for. The inline widths are overridden because a 274px column
+     on a 360px screen is not a column, it is the screen. */
   .body {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Nothing to drag when everything is stacked. */
+  .body > .split {
+    display: none;
   }
 
   .col-dock {
@@ -676,6 +694,15 @@
 
   .col-main {
     order: 0;
+  }
+
+  /* The ticket goes under the chart rather than beside it, and loses its
+     border: at one column a left border is a line across the middle of
+     nothing. */
+  .col-rail {
+    order: 1;
+    border-left: none;
+    border-top: 1px solid var(--rule);
   }
 
   /* Scrollable rather than wrapped: a toolbar that wraps to four rows pushes
@@ -847,4 +874,243 @@
   color: var(--accent-ink);
   background: var(--profit);
   font-weight: 600;
+}
+
+
+/* ── The order rail ──
+
+   Its own column, so the ticket is always where it was last time rather
+   than wherever it was dragged. On a narrow window the three columns
+   collapse to one and the rail goes under the chart. */
+
+.col-rail {
+  position: relative;
+  background: var(--panel);
+  border-left: 1px solid var(--rule);
+}
+
+/* ── Margin level, as a bar as well as a number ──
+
+   A percentage means nothing to somebody who has not been told what the
+   call level is. A bar that is filling up, going yellow and then red, says
+   it without a number at all — and the number is still there for anybody
+   who wants it. It fills at 500%: above that the account is in no danger
+   and the exact figure stops mattering. */
+
+.ml-bar {
+  display: inline-flex;
+  width: 64px;
+  height: 6px;
+  margin-left: 6px;
+  overflow: hidden;
+  vertical-align: middle;
+  background: var(--rule-strong);
+  border-radius: 999px;
+}
+
+.ml-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 400ms ease;
+}
+
+
+/* ── Tab counts ──
+
+   A chip rather than a dim number beside the word: the count is why
+   somebody looks at the tab strip at all, and it has to survive being
+   glanced at. */
+
+.tab-count {
+  margin-left: 5px;
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.tab:not(.tab-on) .tab-count {
+  color: var(--ink-2);
+  background: var(--rule-strong);
+}
+
+
+/* ── Summary ──
+
+   Three blocks, because the three questions are different: what the
+   account holds now, what trading has done to it, and what has been paid
+   in or out. Columns rather than one long list, so each block can be read
+   without the others. */
+
+.sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+  padding: 12px;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.sum-block { display: flex; flex-direction: column; gap: 2px; }
+
+.sum-block .cap { margin-bottom: 4px; }
+
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sum-row:last-child { border-bottom: none; }
+
+.sum-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+
+/* ── My requests ──
+
+   Not a table: there are rarely more than a handful, and the thing a
+   client wants from this screen is the sentence at the end of the row,
+   which a column header cannot say. */
+
+.req {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.req-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+  background: var(--ground);
+  border-radius: 6px;
+  border-left: 2px solid var(--rule-strong);
+}
+
+.req-pending { border-left-color: var(--warn); }
+.req-credited { border-left-color: var(--profit); }
+.req-refused { border-left-color: var(--loss); }
+
+.req-kind { font-weight: 600; }
+
+.req-amount { font-size: 13px; }
+
+.req-stage { margin-left: auto; color: var(--ink-3); }
+
+.req-pending .req-stage { color: var(--warn); }
+.req-credited .req-stage { color: var(--profit); }
+.req-refused .req-stage { color: var(--loss); }
+
+
+/* ── The order rail's header ──
+
+   The symbol is a button, not a label: it is the thing a trader checks the
+   terms of, and making it look pressable is how they find out they can. */
+
+.ticket-what {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.ticket-sym {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: inherit;
+  background: rgb(255 255 255 / 18%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ticket-sym:hover { background: rgb(255 255 255 / 28%); }
+
+.ticket-i {
+  display: inline-grid;
+  place-items: center;
+  width: 11px;
+  height: 11px;
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 700;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.ticket-last { font-size: 11.5px; opacity: 0.9; }
+
+
+/* ── The terms sheet ──
+
+   Anchored under the symbol it describes rather than centred on the
+   screen: it answers a question about that chip, and a dialog in the
+   middle of the window makes the trader find their place again. */
+
+.spec-back {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.spec {
+  position: absolute;
+  top: 34px;
+  right: 8px;
+  z-index: 21;
+  width: 236px;
+  padding: 4px 0 0;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-float);
+}
+
+.spec-head {
+  padding: 7px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--rule);
+}
+
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.spec-note {
+  margin: 0;
+  padding: 8px 11px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
 }

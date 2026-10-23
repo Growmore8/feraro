@@ -20,14 +20,27 @@ import { LevelCell } from '../components/LevelCell'
 import { MarketWatch, SOURCE_NAME } from '../components/MarketWatch'
 import type { PriceLine } from '../components/PriceChart'
 import { Sheet } from '../components/Sheet'
+import { Splitter } from '../components/Splitter'
+import { useTape } from '../feed/useTape'
+import {
+  clampClient,
+  DEFAULT_CLIENT_PANES,
+  readClientPanes,
+  readLayout,
+  writeClientPanes,
+  writeLayout,
+} from '../lib/layout'
 import { Toasts } from '../components/Toasts'
 import { halfOf, stepOf } from '../lib/positions'
 import { Wallet } from '../components/Wallet'
 import type { WalletTab } from '../components/Wallet'
 import { Button, DataTable, Panel, Pill, Readout } from '../components/primitives'
 import type { Column } from '../components/primitives'
+import { KIND_WORD } from '../feed/gateway'
 import type {
   AmendReason,
+  DepositRequest,
+  GatewayAccount,
   GatewayEvent,
   GatewayPending,
   GatewayPosition,
@@ -59,7 +72,16 @@ import {
 import './ClientTerminal.css'
 
 
-const BLOTTER_TABS = ['Trade', 'Net trade', 'Orders', 'History', 'Journal', 'Mailbox', 'News', 'Alerts'] as const
+/**
+ * The tabs along the bottom.
+ *
+ * Named for what a trader is looking at rather than for the MT4 tab that
+ * used to hold it: Positions is what is open, Pending is what is waiting,
+ * Summary is the account totalled up, and Requests is money waiting on the
+ * desk. Mailbox, News and Alerts are gone — a tab nothing can fill is not
+ * a tab, it is a promise.
+ */
+const BLOTTER_TABS = ['Positions', 'Pending', 'History', 'Summary', 'Requests'] as const
 
 export interface ClientTerminalProps {
   /** The connection, opened once by the shell and shared. */
@@ -69,13 +91,58 @@ export interface ClientTerminalProps {
 export function ClientTerminal({ gw }: ClientTerminalProps) {
 
   const [interval, setIntervalChoice] = useState<Interval>('5m')
-  const [tab, setTab] = useState<(typeof BLOTTER_TABS)[number]>('Trade')
+  const [tab, setTab] = useState<(typeof BLOTTER_TABS)[number]>('Positions')
   const [selected, setSelected] = useState(DEFAULT_INSTRUMENT.id)
   const [volume, setVolume] = useState<Qty>(qty('0.10'))
   const [orderKind, setOrderKind] = useState<OrderType>('market')
   const [priceText, setPriceText] = useState('')
   const [ticketOpen, setTicketOpen] = useState(true)
+  const [specOpen, setSpecOpen] = useState(false)
+  /**
+   * How wide the two side columns are, in pixels, remembered per browser.
+   *
+   * A trader with one screen wants a narrow watch list and a trader with
+   * three wants it wide, and neither wants to drag it back every morning.
+   * Clamped on the way in as well as on the way out, so a layout written
+   * by an older build — or by hand — cannot hide a column entirely.
+   */
+  const [watchW, setWatchW] = useState(() => readClientPanes().watch)
+  const [railW, setRailW] = useState(() => readClientPanes().rail)
+
+  const dragWatch = (delta: number) =>
+    setWatchW((w) => {
+      const next = clampClient('watch', w + delta)
+      writeClientPanes({ ...readClientPanes(), watch: next })
+      return next
+    })
+
+  // Negated: dragging the right splitter left makes the rail wider, which
+  // is the direction a hand expects when it grabs the rail's own edge.
+  const dragRail = (delta: number) =>
+    setRailW((w) => {
+      const next = clampClient('rail', w - delta)
+      writeClientPanes({ ...readClientPanes(), rail: next })
+      return next
+    })
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set())
+  /**
+   * Symbols kept at the top of the watch list.
+   *
+   * In the browser rather than on the server: which symbols somebody
+   * glances at is a property of the screen they are sitting at, not of
+   * their account, and a trader with a desk and a laptop wants different
+   * lists on each.
+   */
+  const [favourites, setFavourites] = useState<readonly number[]>(
+    () => readLayout().favourites,
+  )
+
+  const star = (id: number) =>
+    setFavourites((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      writeLayout({ ...readLayout(), favourites: next })
+      return next
+    })
   /**
    * Which side of the wallet is open, or null for closed.
    *
@@ -90,6 +157,9 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
   const instruments: readonly Instrument[] = gw.connected ? gw.instruments : INSTRUMENTS
   const exchange = useFeed(INSTRUMENTS, { enabled: !gw.connected })
   const quotes: ReadonlyMap<number, FeedQuote> = gw.connected ? gw.quotes : exchange.quotes
+
+  /** Where each symbol has been since this page opened. */
+  const tape = useTape(quotes)
 
   const instrument =
     instruments.find((i) => i.id === selected) ?? instruments[0] ?? DEFAULT_INSTRUMENT
@@ -134,6 +204,9 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
     gw.paymentMethods()
     gw.payoutMethods()
   }, [wallet, gw])
+
+  /** This client's money movements the desk has not decided yet. */
+  const waitingOnDesk = gw.myDeposits.filter((r) => r.stage === 'pending').length
 
   const account = gw.account
 
@@ -484,16 +557,30 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
         {account ? (
           <div className="account-strip">
             <Readout label="Balance" value={showMoney(account.balance)} />
-            <Readout label="Credit" value={showMoney(account.credit)} tone="credit" />
-            <Readout label="Equity" value={showMoney(account.equity)} />
-            <Readout label="Margin" value={showMoney(account.usedMargin)} />
-            <Readout label="Free margin" value={showMoney(account.freeMargin)} />
+            {/* Only when there is one. A bonus of nothing is a figure that
+                teaches a trader to ignore the row it sits in. */}
+            {account.credit > 0n ? (
+              <Readout label="Credit" value={showMoney(account.credit)} tone="credit" />
+            ) : null}
+            {account.insurance > 0n ? (
+              <Readout label="Set aside" value={showMoney(account.insurance)} />
+            ) : null}
             <Readout
-              label="Margin level"
-              value={showMarginLevel(account.marginLevelBp)}
-              tone={
-                account.marginLevelBp !== null && account.marginLevelBp < 10_000 ? 'warn' : 'profit'
-              }
+              label="Equity"
+              value={showMoney(account.equity)}
+              tone={account.equity >= account.balance ? 'profit' : 'loss'}
+            />
+            <Readout label="Margin" value={showMoney(account.usedMargin)} />
+            <Readout
+              label="Free margin"
+              value={showMoney(account.freeMargin)}
+              tone={account.freeMargin < 0n ? 'loss' : 'profit'}
+            />
+            <MarginLevel bp={account.marginLevelBp} used={account.usedMargin} />
+            <Readout
+              label="Profit"
+              value={showSigned(floating)}
+              tone={floating < 0n ? 'loss' : 'profit'}
             />
           </div>
         ) : (
@@ -504,77 +591,12 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
       </div>
 
       {/* ── Body ── */}
-      <div className="body">
-        <div className="col-main">
-          {/* The pane carries its own timeframe row and the bar it is on, so
-              the panel heading is just the symbol. */}
-          <Panel grow title={instrument.symbol}>
-            <ChartPane
-              gw={gw}
-              instrument={instrument}
-              interval={interval}
-              onInterval={setIntervalChoice}
-              last={quote?.bid}
-              lines={positionLines(positions, instrument)}
-            />
-          </Panel>
-
-          <section className="panel blotter">
-            <div className="blotter-tabs">
-              {BLOTTER_TABS.map((t) => (
-                <button key={t} type="button" className={`tab${t === tab ? ' tab-on' : ''}`} onClick={() => setTab(t)}>
-                  {t}
-                  {t === 'Trade' && positions.length > 0 ? (
-                    <span className="mono dim"> {positions.length}</span>
-                  ) : null}
-                  {t === 'Orders' && gw.pending.length > 0 ? (
-                    <span className="mono dim"> {gw.pending.length}</span>
-                  ) : null}
-                </button>
-              ))}
-              <div className="grow" />
-              <div className="row" style={{ gap: 12, padding: '0 12px' }}>
-                <span className="cap">Floating</span>
-                <span className={`mono ${floating < 0n ? 'loss' : 'profit'}`} style={{ fontSize: 13, fontWeight: 600 }}>
-                  {showSigned(floating)}
-                </span>
-              </div>
-            </div>
-            {tab === 'Trade' ? (
-              <DataTable
-                columns={columns}
-                rows={positions}
-                rowKey={(p) => p.ticket}
-                empty={gw.connected ? 'No open positions. Place one from the ticket.' : 'Gateway offline.'}
-              />
-            ) : tab === 'Orders' ? (
-              <DataTable
-                columns={pendingColumns}
-                rows={gw.pending}
-                rowKey={(o) => o.ticket}
-                empty={
-                  gw.connected
-                    ? 'No resting orders. Choose Limit or Stop in the ticket.'
-                    : 'Gateway offline.'
-                }
-              />
-            ) : tab === 'History' ? (
-              <DataTable
-                columns={statementColumns}
-                rows={gw.statement}
-                rowKey={(l) => l.seq}
-                empty={
-                  gw.connected
-                    ? 'Nothing has moved on this account yet.'
-                    : 'Gateway offline.'
-                }
-              />
-            ) : (
-              <p className="table-empty dim">No {tab.toLowerCase()} entries.</p>
-            )}
-          </section>
-        </div>
-
+      <div
+        className="body"
+        style={{
+          gridTemplateColumns: `${watchW}px 1px minmax(0, 1fr) 1px ${railW}px`,
+        }}
+      >
         <div className="col-dock">
           <Panel grow title="Market Watch" meta={`${instruments.length} symbols`}>
             <MarketWatch
@@ -582,6 +604,9 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
               quotes={quotes}
               selected={instrument.id}
               onSelect={setSelected}
+              trail={tape}
+              favourites={favourites}
+              onFavourite={star}
             />
           </Panel>
 
@@ -671,6 +696,246 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             </div>
           </Panel>
         </div>
+
+        <Splitter
+          direction="vertical"
+          label="Market watch width"
+          onDrag={dragWatch}
+          onNudge={dragWatch}
+          onDoubleClick={() => dragWatch(DEFAULT_CLIENT_PANES.watch - watchW)}
+        />
+
+        <div className="col-main">
+          {/* The pane carries its own timeframe row and the bar it is on, so
+              the panel heading is just the symbol. */}
+          <Panel grow title={instrument.symbol}>
+            <ChartPane
+              gw={gw}
+              instrument={instrument}
+              interval={interval}
+              onInterval={setIntervalChoice}
+              last={quote?.bid}
+              lines={positionLines(positions, instrument)}
+            />
+          </Panel>
+
+          <section className="panel blotter">
+            <div className="blotter-tabs">
+              {BLOTTER_TABS.map((t) => (
+                <button key={t} type="button" className={`tab${t === tab ? ' tab-on' : ''}`} onClick={() => setTab(t)}>
+                  {t}
+                  {t === 'Positions' && positions.length > 0 ? (
+                    <span className="tab-count">{positions.length}</span>
+                  ) : null}
+                  {t === 'Pending' && gw.pending.length > 0 ? (
+                    <span className="tab-count">{gw.pending.length}</span>
+                  ) : null}
+                  {t === 'Requests' && waitingOnDesk > 0 ? (
+                    <span className="tab-count">{waitingOnDesk}</span>
+                  ) : null}
+                </button>
+              ))}
+              <div className="grow" />
+              <div className="row" style={{ gap: 12, padding: '0 12px' }}>
+                <span className="cap">Floating</span>
+                <span className={`mono ${floating < 0n ? 'loss' : 'profit'}`} style={{ fontSize: 13, fontWeight: 600 }}>
+                  {showSigned(floating)}
+                </span>
+              </div>
+            </div>
+            {tab === 'Positions' ? (
+              <DataTable
+                columns={columns}
+                rows={positions}
+                rowKey={(p) => p.ticket}
+                empty={gw.connected ? 'No open positions. Place one from the ticket.' : 'Gateway offline.'}
+              />
+            ) : tab === 'Pending' ? (
+              <DataTable
+                columns={pendingColumns}
+                rows={gw.pending}
+                rowKey={(o) => o.ticket}
+                empty={
+                  gw.connected
+                    ? 'No resting orders. Choose Limit or Stop in the ticket.'
+                    : 'Gateway offline.'
+                }
+              />
+            ) : tab === 'History' ? (
+              <DataTable
+                columns={statementColumns}
+                rows={gw.statement}
+                rowKey={(l) => l.seq}
+                empty={
+                  gw.connected
+                    ? 'Nothing has moved on this account yet.'
+                    : 'Gateway offline.'
+                }
+              />
+            ) : tab === 'Summary' ? (
+              <Summary
+                account={account}
+                positions={positions}
+                statement={gw.statement}
+              />
+            ) : (
+              <MyRequests requests={gw.myDeposits} />
+            )}
+          </section>
+        </div>
+
+        <Splitter
+          direction="vertical"
+          label="Order panel width"
+          onDrag={dragRail}
+          onNudge={dragRail}
+          onDoubleClick={() => dragRail(railW - DEFAULT_CLIENT_PANES.rail)}
+        />
+
+        <aside className="col-rail">
+        {/* ── Deal ticket ── */}
+        {ticketOpen ? (
+          <div className="ticket">
+            <header className="ticket-head">
+              <span className="ticket-what">New order</span>
+              <button
+                type="button"
+                className="ticket-sym"
+                onClick={() => setSpecOpen((v) => !v)}
+                title="What this instrument's terms are"
+              >
+                {instrument.symbol}
+                <span className="ticket-i" aria-hidden="true">
+                  i
+                </span>
+              </button>
+              {quote ? (
+                <span className="mono ticket-last">
+                  {showPrice(quote.bid, instrument.displayDigits)}
+                </span>
+              ) : null}
+              <button type="button" className="ticket-close" onClick={() => setTicketOpen(false)} aria-label="Close">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M2 2l8 8M10 2l-8 8" />
+                </svg>
+              </button>
+            </header>
+
+            {/* The terms, where a trader asks for them: beside the volume
+                box, not on a separate page. A lot size means nothing
+                without the contract size, and a margin figure nobody can
+                find is a margin call nobody saw coming. */}
+            {specOpen ? (
+              <ContractSpec
+                instrument={instrument}
+                quote={quote}
+                leverage={account?.leverage ?? 100}
+                onClose={() => setSpecOpen(false)}
+              />
+            ) : null}
+            <div className="ticket-body">
+              <div className="kinds">
+                {(['market', 'limit', 'stop'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`kind${k === orderKind ? ' kind-on' : ''}`}
+                    onClick={() => chooseKind(k)}
+                  >
+                    {ORDER_TYPE_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+
+              {account?.hedging ? (
+                <p className="ticket-note">
+                  Hedging: a sell here opens a short beside your long rather than closing
+                  it. Close a position from the Trade tab, by its ticket.
+                </p>
+              ) : null}
+
+              <div className="sides">
+                <button
+                  type="button"
+                  className="side side-sell"
+                  disabled={!canSubmit}
+                  onClick={() => submit('sell')}
+                >
+                  <span className="side-label">SELL</span>
+                  <span className="mono side-px">{quote ? showPrice(quote.bid, instrument.displayDigits) : '—'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="side side-buy"
+                  disabled={!canSubmit}
+                  onClick={() => submit('buy')}
+                >
+                  <span className="side-label">BUY</span>
+                  <span className="mono side-px">{quote ? showPrice(quote.ask, instrument.displayDigits) : '—'}</span>
+                </button>
+              </div>
+
+              {viewOnly && listing?.note ? <p className="ticket-note">{listing.note}</p> : null}
+
+              {orderKind !== 'market' ? (
+                <label className="px-row">
+                  <span className="cap">
+                    {orderKind === 'limit' ? 'Limit price' : 'Stop price'}
+                  </span>
+                  <input
+                    className={`px-input mono${restingPrice() === null ? ' px-bad' : ''}`}
+                    value={priceText}
+                    onChange={(e) => setPriceText(e.target.value)}
+                    inputMode="decimal"
+                    spellCheck={false}
+                    aria-label={orderKind === 'limit' ? 'Limit price' : 'Stop price'}
+                  />
+                </label>
+              ) : null}
+
+              <div className="vol-row">
+                <span className="cap">Volume</span>
+                <div className="stepper">
+                  <button type="button" onClick={() => adjust(-1n)} aria-label="Decrease volume">
+                    &minus;
+                  </button>
+                  <span className="mono stepper-value">{showQtyAsLots(volume, contract, 3)}</span>
+                  <button type="button" onClick={() => adjust(1n)} aria-label="Increase volume">
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="costs">
+                <CostRow label="Notional" value={ticketNotional ? `${showMoney(ticketNotional)} USD` : '—'} />
+                <CostRow label="Margin required" value={ticketMargin ? `${showMoney(ticketMargin)} USD` : '—'} />
+                <CostRow
+                  label="Spread"
+                  value={quote ? showPrice((quote.ask - quote.bid) as Price, instrument.displayDigits) : '—'}
+                />
+                <CostRow
+                  label="Free margin after"
+                  value={
+                    account && ticketMargin
+                      ? showMoney((account.freeMargin - ticketMargin) as Money)
+                      : '—'
+                  }
+                />
+              </div>
+
+              {!gw.connected ? (
+                <span className="cap" style={{ textAlign: 'center' }}>
+                  Start the gateway to trade
+                </span>
+              ) : orderKind !== 'market' ? (
+                <span className="cap" style={{ textAlign: 'center' }}>
+                  Rests until the price is reached. Margin is checked then, not now.
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        </aside>
       </div>
 
       {/* ── Status bar ── */}
@@ -704,120 +969,6 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
           {gw.connected ? 'Live prices · demo account · B-book' : 'Exchange prices direct · trading disabled'}
         </span>
       </div>
-
-      {/* ── Deal ticket ── */}
-      {ticketOpen ? (
-        <div className="ticket">
-          <header className="ticket-head">
-            <span>New position · {instrument.symbol}</span>
-            <button type="button" className="ticket-close" onClick={() => setTicketOpen(false)} aria-label="Close">
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                <path d="M2 2l8 8M10 2l-8 8" />
-              </svg>
-            </button>
-          </header>
-          <div className="ticket-body">
-            <div className="kinds">
-              {(['market', 'limit', 'stop'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`kind${k === orderKind ? ' kind-on' : ''}`}
-                  onClick={() => chooseKind(k)}
-                >
-                  {ORDER_TYPE_LABEL[k]}
-                </button>
-              ))}
-            </div>
-
-            {account?.hedging ? (
-              <p className="ticket-note">
-                Hedging: a sell here opens a short beside your long rather than closing
-                it. Close a position from the Trade tab, by its ticket.
-              </p>
-            ) : null}
-
-            <div className="sides">
-              <button
-                type="button"
-                className="side side-sell"
-                disabled={!canSubmit}
-                onClick={() => submit('sell')}
-              >
-                <span className="side-label">SELL</span>
-                <span className="mono side-px">{quote ? showPrice(quote.bid, instrument.displayDigits) : '—'}</span>
-              </button>
-              <button
-                type="button"
-                className="side side-buy"
-                disabled={!canSubmit}
-                onClick={() => submit('buy')}
-              >
-                <span className="side-label">BUY</span>
-                <span className="mono side-px">{quote ? showPrice(quote.ask, instrument.displayDigits) : '—'}</span>
-              </button>
-            </div>
-
-            {viewOnly && listing?.note ? <p className="ticket-note">{listing.note}</p> : null}
-
-            {orderKind !== 'market' ? (
-              <label className="px-row">
-                <span className="cap">
-                  {orderKind === 'limit' ? 'Limit price' : 'Stop price'}
-                </span>
-                <input
-                  className={`px-input mono${restingPrice() === null ? ' px-bad' : ''}`}
-                  value={priceText}
-                  onChange={(e) => setPriceText(e.target.value)}
-                  inputMode="decimal"
-                  spellCheck={false}
-                  aria-label={orderKind === 'limit' ? 'Limit price' : 'Stop price'}
-                />
-              </label>
-            ) : null}
-
-            <div className="vol-row">
-              <span className="cap">Volume</span>
-              <div className="stepper">
-                <button type="button" onClick={() => adjust(-1n)} aria-label="Decrease volume">
-                  &minus;
-                </button>
-                <span className="mono stepper-value">{showQtyAsLots(volume, contract, 3)}</span>
-                <button type="button" onClick={() => adjust(1n)} aria-label="Increase volume">
-                  +
-                </button>
-              </div>
-            </div>
-
-            <div className="costs">
-              <CostRow label="Notional" value={ticketNotional ? `${showMoney(ticketNotional)} USD` : '—'} />
-              <CostRow label="Margin required" value={ticketMargin ? `${showMoney(ticketMargin)} USD` : '—'} />
-              <CostRow
-                label="Spread"
-                value={quote ? showPrice((quote.ask - quote.bid) as Price, instrument.displayDigits) : '—'}
-              />
-              <CostRow
-                label="Free margin after"
-                value={
-                  account && ticketMargin
-                    ? showMoney((account.freeMargin - ticketMargin) as Money)
-                    : '—'
-                }
-              />
-            </div>
-
-            {!gw.connected ? (
-              <span className="cap" style={{ textAlign: 'center' }}>
-                Start the gateway to trade
-              </span>
-            ) : orderKind !== 'market' ? (
-              <span className="cap" style={{ textAlign: 'center' }}>
-                Rests until the price is reached. Margin is checked then, not now.
-              </span>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {wallet !== null && account ? (
         <Sheet
@@ -1129,6 +1280,274 @@ function ToolButton({ label, tone = 'var(--ink-2)', onClick }: { label: string; 
         ))}
       </span>
     </button>
+  )
+}
+
+/**
+ * Margin level, as a bar as well as a number.
+ *
+ * A percentage means nothing to somebody who has not been told what the
+ * call level is. A bar filling up, going amber and then red, says it
+ * without a number at all — and the number stays for anybody who wants it.
+ *
+ * It fills at 500%: above that the account is in no danger and the exact
+ * figure stops mattering, so the extra length would be bar nobody reads.
+ */
+function MarginLevel({ bp, used }: { bp: number | null; used: Money }) {
+  // No margin used means no level: nothing is at risk, and a bar at zero
+  // would read as the worst case rather than the safest.
+  const idle = used <= 0n || bp === null
+  const percent = bp === null ? 0 : bp / 100
+  const colour = idle
+    ? 'var(--ink-4)'
+    : percent >= 200
+      ? 'var(--profit)'
+      : percent >= 150
+        ? 'var(--warn)'
+        : percent >= 100
+          ? 'var(--warn)'
+          : 'var(--loss)'
+  return (
+    <div className="readout">
+      <span className="cap">Margin level</span>
+      <span className="mono" style={{ fontSize: 13, fontWeight: 500, color: colour }}>
+        {showMarginLevel(bp)}
+        {idle ? null : (
+          <span className="ml-bar" aria-hidden="true">
+            <span
+              className="ml-fill"
+              style={{
+                width: `${Math.min((percent / 500) * 100, 100)}%`,
+                background: colour,
+              }}
+            />
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The account totalled up: what it holds, what it is risking, what it has
+ * cost and what it has made.
+ *
+ * Every figure here is a sum of things already on the other tabs. It
+ * exists because a trader at the end of a session wants one screen that
+ * answers "how did that go", and totting up a blotter by hand is how
+ * people arrive at the wrong number and then argue about it.
+ */
+function Summary({
+  account,
+  positions,
+  statement,
+}: {
+  account: GatewayAccount | null
+  positions: readonly GatewayPosition[]
+  statement: readonly StatementLine[]
+}) {
+  if (!account) {
+    return <p className="table-empty dim">No account.</p>
+  }
+  const since = (kinds: readonly StatementLine['kind'][]) =>
+    statement
+      .filter((l) => kinds.includes(l.kind))
+      .reduce((total, l) => total + l.amount, 0n) as Money
+
+  const floating = positions.reduce((total, p) => total + p.profit, 0n) as Money
+  const closed = since(['trade', 'stopOut', 'stopLoss', 'takeProfit'])
+  const financing = since(['financing'])
+  const paidIn = since(['deposit'])
+  const paidOut = since(['withdrawal'])
+  const moved = since(['transferIn', 'transferOut'])
+
+  return (
+    <div className="sum">
+      <div className="sum-block">
+        <span className="cap">Now</span>
+        <SumRow label="Balance" value={showMoney(account.balance)} />
+        {account.credit > 0n ? (
+          <SumRow label="Bonus" value={showMoney(account.credit)} tone="credit" />
+        ) : null}
+        {account.insurance > 0n ? (
+          <SumRow label="Set aside" value={showMoney(account.insurance)} />
+        ) : null}
+        <SumRow label="Open positions" value={String(positions.length)} />
+        <SumRow
+          label="Floating"
+          value={showSigned(floating)}
+          tone={floating < 0n ? 'loss' : 'profit'}
+        />
+        <SumRow label="Equity" value={showMoney(account.equity)} />
+      </div>
+
+      <div className="sum-block">
+        <span className="cap">Trading, as far back as this window holds</span>
+        <SumRow
+          label="Closed profit"
+          value={showSigned(closed)}
+          tone={closed < 0n ? 'loss' : 'profit'}
+        />
+        <SumRow
+          label="Overnight financing"
+          value={showSigned(financing)}
+          tone={financing < 0n ? 'loss' : 'profit'}
+        />
+      </div>
+
+      <div className="sum-block">
+        <span className="cap">Money</span>
+        <SumRow label="Paid in" value={showMoney(paidIn)} />
+        <SumRow label="Paid out" value={showSigned(paidOut)} />
+        {moved !== 0n ? (
+          <SumRow label="Moved between accounts" value={showSigned(moved)} />
+        ) : null}
+      </div>
+
+      <p className="sum-note">
+        These add up what the statement window holds, which is the recent past
+        rather than all of it. The balance above is the engine&rsquo;s own figure
+        and is right whatever this window reaches back to.
+      </p>
+    </div>
+  )
+}
+
+function SumRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'profit' | 'loss' | 'credit'
+}) {
+  return (
+    <div className="sum-row">
+      <span className="dim">{label}</span>
+      <span className={`mono${tone ? ` ${tone}` : ''}`}>{value}</span>
+    </div>
+  )
+}
+
+/**
+ * This client's own money movements and where each has got to.
+ *
+ * On the desk's screen the same queue is a work list. Here it is an answer
+ * to one question — "where is my money?" — which is the question support
+ * is asked most, and the one a client should not have to ask.
+ */
+function MyRequests({ requests }: { requests: readonly DepositRequest[] }) {
+  if (requests.length === 0) {
+    return (
+      <p className="table-empty dim">
+        Nothing waiting. Deposits and withdrawals you ask for appear here with
+        what the desk decided.
+      </p>
+    )
+  }
+  return (
+    <div className="req">
+      {requests.map((r) => (
+        <div key={r.id} className={`req-row req-${r.stage}`}>
+          <span className="req-kind">{KIND_WORD[r.kind]}</span>
+          <span className="mono req-amount">{r.amount}</span>
+          <span className="dim">{r.methodLabel || 'the desk'}</span>
+          <span className="dim mono">{WHEN.format(new Date(r.at))}</span>
+          <span className="req-stage">
+            {r.stage === 'pending'
+              ? 'waiting on the desk'
+              : r.stage === 'credited'
+                ? 'done'
+                : `refused — ${r.detail || 'no reason given'}`}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const WHEN = new Intl.DateTimeFormat(undefined, {
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/**
+ * One instrument's terms, as a trader needs them before sizing a trade.
+ *
+ * Every figure is derived from what the gateway already said — the
+ * contract size, the digits, the live spread and the account's leverage —
+ * rather than from a table somebody has to keep up to date. A spec sheet
+ * that disagrees with the engine is worse than none.
+ */
+function ContractSpec({
+  instrument,
+  quote,
+  leverage,
+  onClose,
+}: {
+  instrument: Instrument
+  quote: FeedQuote | undefined
+  leverage: number
+  onClose(): void
+}) {
+  const digits = instrument.displayDigits
+  const spread =
+    quote === undefined
+      ? null
+      : Number(quote.ask - quote.bid) / Number(instrument.tickSize)
+
+  // One lot's notional at the ask, and the margin that ties up. Both are
+  // "about": the engine is the only thing entitled to say what margin a
+  // particular order costs, and it says so by accepting or refusing it.
+  const notionalPerLot =
+    quote === undefined
+      ? null
+      : (notional(quote.ask, instrument.contractSize) as Money)
+  const marginPerLot =
+    notionalPerLot === null
+      ? null
+      : ((notionalPerLot / BigInt(Math.max(leverage, 1))) as Money)
+
+  return (
+    <>
+      <div className="spec-back" onClick={onClose} />
+      <div className="spec" role="dialog" aria-label={`${instrument.symbol} terms`}>
+        <header className="spec-head">{instrument.symbol} · terms</header>
+        <SpecRow label="Contract size" value={`${showQty(instrument.contractSize, 0)} ${instrument.base}`} />
+        <SpecRow label="Decimals shown" value={String(digits)} />
+        <SpecRow label="Tick size" value={showPrice(instrument.tickSize, digits)} />
+        <SpecRow
+          label="Spread now"
+          value={spread === null ? '—' : `${spread.toFixed(0)} pts`}
+        />
+        <SpecRow label="Leverage" value={`1:${leverage}`} />
+        <SpecRow
+          label="One lot is worth"
+          value={notionalPerLot === null ? '—' : showMoney(notionalPerLot)}
+        />
+        <SpecRow
+          label="Margin for one lot"
+          value={marginPerLot === null ? '—' : `about ${showMoney(marginPerLot)}`}
+        />
+        <p className="spec-note">
+          The margin is an estimate from the price on screen. The engine decides
+          what an order actually costs, and says so by taking it or refusing it.
+        </p>
+      </div>
+    </>
+  )
+}
+
+function SpecRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="spec-row">
+      <span className="dim">{label}</span>
+      <span className="mono">{value}</span>
+    </div>
   )
 }
 

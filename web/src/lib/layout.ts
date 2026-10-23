@@ -135,3 +135,85 @@ export function toggled(open: PanesOpen, pane: keyof PanesOpen): PanesOpen {
   if (!Object.values(next).some(Boolean)) return open
   return next
 }
+
+
+/* ── The client terminal's own panes ──
+
+   A separate store with a separate key. The layout above is the manager's,
+   and the two screens are used by different people on different machines —
+   sharing one key would mean a client's favourites arriving in a dealer's
+   navigator, which is at best confusing and at worst a hint about who else
+   uses the platform. */
+
+const CLIENT_KEY = 'feraro.layout.client'
+
+/** The client terminal's column widths and starred symbols. */
+export interface ClientPanes {
+  /** Market watch column, in pixels. */
+  readonly watch: number
+  /** Order rail, in pixels. */
+  readonly rail: number
+  readonly favourites: readonly number[]
+}
+
+export const CLIENT_LIMITS = {
+  watch: { min: 180, max: 460 },
+  rail: { min: 240, max: 480 },
+} as const
+
+export const DEFAULT_CLIENT_PANES: ClientPanes = {
+  watch: 274,
+  rail: 318,
+  favourites: [],
+}
+
+/**
+ * Wide enough to read, narrow enough to leave a chart.
+ *
+ * The lower bound is where a column stops being useful, not where it
+ * disappears: a 40px watch list is not a small watch list, it is a bug
+ * somebody has to recover from by clearing their browser.
+ */
+export const clampClient = (which: keyof typeof CLIENT_LIMITS, value: number): number => {
+  const { min, max } = CLIENT_LIMITS[which]
+  if (!Number.isFinite(value)) return DEFAULT_CLIENT_PANES[which]
+  return Math.round(Math.min(max, Math.max(min, value)))
+}
+
+/** Reads it back, defensively: anything unreadable is the default. */
+export function readClientPanes(): ClientPanes {
+  let parsed: unknown
+  try {
+    const held = window.localStorage.getItem(CLIENT_KEY)
+    if (held === null) return DEFAULT_CLIENT_PANES
+    parsed = JSON.parse(held)
+  } catch {
+    return DEFAULT_CLIENT_PANES
+  }
+  if (typeof parsed !== 'object' || parsed === null) return DEFAULT_CLIENT_PANES
+  const held = parsed as Record<string, unknown>
+  const size = (key: keyof typeof CLIENT_LIMITS): number =>
+    clampClient(
+      key,
+      typeof held[key] === 'number' ? (held[key] as number) : DEFAULT_CLIENT_PANES[key],
+    )
+  return {
+    watch: size('watch'),
+    rail: size('rail'),
+    favourites: Array.isArray(held['favourites'])
+      ? (held['favourites'] as unknown[]).filter(
+          (id): id is number => typeof id === 'number' && Number.isSafeInteger(id),
+        )
+      : DEFAULT_CLIENT_PANES.favourites,
+  }
+}
+
+/** Stores it. Failing to is not worth interrupting anybody for. */
+export function writeClientPanes(panes: ClientPanes): void {
+  try {
+    window.localStorage.setItem(CLIENT_KEY, JSON.stringify(panes))
+  } catch {
+    // A browser with storage switched off still trades; it just forgets
+    // the layout, which is the right thing to lose.
+  }
+}

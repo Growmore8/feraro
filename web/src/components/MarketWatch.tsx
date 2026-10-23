@@ -23,6 +23,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import type { FeedQuote } from '../feed/types'
 import type { GatewayInstrument } from '../feed/gateway'
+import type { Tape } from '../feed/useTape'
 import type { Instrument } from '../lib/domain'
 import { Badge } from './Badge'
 import { showPrice } from '../lib/money'
@@ -66,6 +67,9 @@ export function spreadPoints(quote: FeedQuote, inst: Instrument): bigint | null 
   return (quote.ask - quote.bid) / inst.tickSize
 }
 
+/** What the favourites group is called, and the key it folds under. */
+const FAVOURITES = '★ Favourites'
+
 export interface MarketWatchProps {
   readonly instruments: readonly Instrument[]
   readonly quotes: ReadonlyMap<number, FeedQuote>
@@ -74,6 +78,31 @@ export interface MarketWatchProps {
   onSelect(instrumentId: number): void
   /** Hides the search box and the group headers, for the narrowest layouts. */
   readonly compact?: boolean
+  /**
+   * Where each symbol has been since this page opened.
+   *
+   * Used for the change column. It is *not* the day's change: this
+   * platform has no session open to measure from yet, and a figure
+   * labelled as the day's that is really the last ten minutes' is worse
+   * than no figure. The column header and its tooltip say which it is.
+   */
+  readonly trail?: Tape | undefined
+  /** Symbols kept at the top, in their own group. */
+  readonly favourites?: readonly number[] | undefined
+  /** Called when a row is starred or unstarred. Omitted hides the stars. */
+  onFavourite?: ((instrumentId: number) => void) | undefined
+}
+
+/** The change since this page opened, in percent, or null. */
+function changeSince(trail: Tape | undefined, id: number, q: FeedQuote | undefined): number | null {
+  if (!trail || !q) return null
+  const seen = trail.get(id)
+  const first = seen?.marks[0]
+  if (first === undefined || first === 0n) return null
+  const mid = (q.bid + q.ask) / 2n
+  // Through Number only at the end, and only for a figure shown to one
+  // decimal place: no balance is derived from this.
+  return (Number(mid - first) / Number(first)) * 100
 }
 
 export function MarketWatch({
@@ -82,6 +111,9 @@ export function MarketWatch({
   selected,
   onSelect,
   compact = false,
+  trail,
+  favourites = [],
+  onFavourite,
 }: MarketWatchProps) {
   const [search, setSearch] = useState('')
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set())
@@ -96,8 +128,14 @@ export function MarketWatch({
       const key = groupOf(inst)
       by.set(key, [...(by.get(key) ?? []), inst])
     }
-    return [...by.entries()]
-  }, [instruments, search])
+    const rest = [...by.entries()]
+    // Starred symbols come first, in a group of their own, and stay in
+    // their asset group as well: a favourite is a shortcut, not a move.
+    const starred = matched.filter((i) => favourites.includes(i.id))
+    return starred.length > 0
+      ? ([[FAVOURITES, starred], ...rest] as [string, Instrument[]][])
+      : rest
+  }, [instruments, search, favourites])
 
   const fold = (name: string) =>
     setFolded((prev) => {
@@ -132,6 +170,13 @@ export function MarketWatch({
               <th className="num" style={{ width: 44 }} title="Spread, in points">
                 Sprd
               </th>
+              <th
+                className="num"
+                style={{ width: 52 }}
+                title="Change since this page opened — not the day's change, which this platform cannot measure yet"
+              >
+                Chg
+              </th>
               <th style={{ width: 22 }} aria-label="Price source" />
             </tr>
           </thead>
@@ -140,7 +185,7 @@ export function MarketWatch({
               <Fragment key={name}>
                 {compact ? null : (
                   <tr className="mw-group" onClick={() => fold(name)}>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <span className="mw-caret">{folded.has(name) ? '▸' : '▾'}</span>
                       {name}
                       <span className="mw-count">{members.length}</span>
@@ -155,7 +200,7 @@ export function MarketWatch({
                       const spread = q ? spreadPoints(q, inst) : null
                       return (
                         <tr
-                          key={inst.id}
+                          key={`${name}-${inst.id}`}
                           className={`mw-row${inst.id === selected ? ' row-active' : ''}`}
                           onClick={() => onSelect(inst.id)}
                           title={note ?? undefined}
@@ -165,6 +210,26 @@ export function MarketWatch({
                         >
                           <td className={`sym${note ? ' dim' : ''}`}>
                             <span className="mw-sym">
+                              {onFavourite ? (
+                                <button
+                                  type="button"
+                                  className={`mw-star${favourites.includes(inst.id) ? ' on' : ''}`}
+                                  title={
+                                    favourites.includes(inst.id)
+                                      ? 'Remove from favourites'
+                                      : 'Keep at the top'
+                                  }
+                                  onClick={(e) => {
+                                    // The row selects the symbol; the star
+                                    // must not also do that, or starring
+                                    // changes what the chart is showing.
+                                    e.stopPropagation()
+                                    onFavourite(inst.id)
+                                  }}
+                                >
+                                  {favourites.includes(inst.id) ? '★' : '☆'}
+                                </button>
+                              ) : null}
                               <Badge symbol={inst.symbol} size={20} />
                               {inst.symbol}
                             </span>
@@ -180,6 +245,18 @@ export function MarketWatch({
                             </span>
                           </td>
                           <td className="num dim">{spread === null ? '—' : String(spread)}</td>
+                          <td className="num">
+                            {(() => {
+                              const pct = changeSince(trail, inst.id, q)
+                              if (pct === null) return <span className="dim">—</span>
+                              return (
+                                <span className={pct < 0 ? 'loss' : 'profit'}>
+                                  {pct >= 0 ? '+' : ''}
+                                  {pct.toFixed(1)}%
+                                </span>
+                              )
+                            })()}
+                          </td>
                           <td
                             className="src"
                             title={
@@ -197,7 +274,7 @@ export function MarketWatch({
             ))}
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={5} className="dim" style={{ padding: '10px 8px' }}>
+                <td colSpan={6} className="dim" style={{ padding: '10px 8px' }}>
                   Nothing matches “{search}”.
                 </td>
               </tr>

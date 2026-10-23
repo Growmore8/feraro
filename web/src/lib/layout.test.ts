@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CLIENT_LIMITS,
   clampPane,
+  DEFAULT_CLIENT_PANES,
   DEFAULT_LAYOUT,
   LIMITS,
+  readClientPanes,
   readLayout,
   toggled,
+  writeClientPanes,
   writeLayout,
 } from './layout'
 
@@ -129,5 +133,54 @@ describe('closing a pane', () => {
   it('refuses to close the last one, which would leave an empty screen', () => {
     const only = { navigator: false, chart: true, watch: false, toolbox: false }
     expect(toggled(only, 'chart')).toEqual(only)
+  })
+})
+
+const CLIENT_KEY = 'feraro.layout.client'
+
+describe('the client terminal’s own panes', () => {
+
+  it('starts at the defaults when nothing is stored', () => {
+    use(storage())
+    expect(readClientPanes()).toEqual(DEFAULT_CLIENT_PANES)
+  })
+
+  it('keeps a width across a reload', () => {
+    use(storage())
+    writeClientPanes({ ...DEFAULT_CLIENT_PANES, watch: 320, rail: 260 })
+    expect(readClientPanes().watch).toBe(320)
+    expect(readClientPanes().rail).toBe(260)
+  })
+
+  it('does not share the manager’s key', () => {
+    // A client and a dealer are different people. A shared key would put a
+    // client's favourites in a dealer's navigator, which is at best
+    // confusing and at worst a hint about who else uses the platform.
+    use(storage())
+    writeClientPanes({ ...DEFAULT_CLIENT_PANES, favourites: [1, 2] })
+    expect(readLayout().favourites).toEqual([])
+  })
+
+  it('clamps a width that would hide a column', () => {
+    // Read as well as written: a value put there by an older build, or by
+    // hand, must not leave somebody with a 2px watch list and no way back.
+    use(storage({ [CLIENT_KEY]: JSON.stringify({ watch: 2, rail: 9999, favourites: [] }) }))
+    const panes = readClientPanes()
+    expect(panes.watch).toBe(CLIENT_LIMITS.watch.min)
+    expect(panes.rail).toBe(CLIENT_LIMITS.rail.max)
+  })
+
+  it('survives rubbish in storage', () => {
+    for (const junk of ['', 'not json', '[]', 'null', '{"watch":"wide"}']) {
+      use(storage({ [CLIENT_KEY]: junk }))
+      const panes = readClientPanes()
+      expect(panes.watch).toBeGreaterThanOrEqual(CLIENT_LIMITS.watch.min)
+      expect(panes.favourites).toEqual([])
+    }
+  })
+
+  it('drops favourites that are not whole numbers', () => {
+    use(storage({ [CLIENT_KEY]: JSON.stringify({ favourites: [1, '2', null, 3.5, 4] }) }))
+    expect(readClientPanes().favourites).toEqual([1, 4])
   })
 })
