@@ -1949,7 +1949,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             }
           }}
         >
-          {quiet ? '\u25cc' : '\u25c9'}
+          <SoundIcon off={quiet} />
         </button>
 
         <button
@@ -1963,7 +1963,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           aria-label="Two-factor"
           onClick={() => setSheet('second')}
         >
-          {gw.session?.secondFactor ? '\u26bf' : '\u26ff'}
+          <ShieldIcon on={gw.session?.secondFactor ?? false} />
         </button>
 
         <button
@@ -1980,7 +1980,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             setTab('Requests')
           }}
         >
-          \u2302
+          <BellIcon />
           {waitingOnDesk > 0 ? <span className="mgr-icon-dot">{waitingOnDesk}</span> : null}
         </button>
 
@@ -2039,7 +2039,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           aria-label="Sign out"
           onClick={gw.signOut}
         >
-          \u23fb
+          <PowerIcon />
         </button>
       </header>
 
@@ -3474,6 +3474,65 @@ function SumLine({
       <span className="dim">{label}</span>
       <span className={`mono${tone ? ` ${tone}` : ''}`}>{value}</span>
     </div>
+  )
+}
+
+/* ── The command bar's icons ──
+
+   Drawn rather than typed. A glyph is a bet on the font a stranger's
+   machine happens to have, and the bet had already been lost once: two of
+   these shipped as the literal text "\u2302" and "\u23fb" because a
+   backslash escape in a JSX text node is five characters of text, not a
+   character. An inline SVG renders the same everywhere or not at all. */
+
+const STROKE = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.6,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+function SoundIcon({ off }: { off: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" {...STROKE}>
+      <path d="M3 6h2.5L9 3v10L5.5 10H3z" />
+      {off ? (
+        <path d="M11.5 6.5l3 3M14.5 6.5l-3 3" />
+      ) : (
+        <>
+          <path d="M11.3 5.6a3.4 3.4 0 0 1 0 4.8" />
+          <path d="M13.2 3.8a6 6 0 0 1 0 8.4" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+function ShieldIcon({ on }: { on: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" {...STROKE}>
+      <path d="M8 1.6l5 2v4.2c0 3.2-2.1 5.4-5 6.6-2.9-1.2-5-3.4-5-6.6V3.6z" />
+      {on ? <path d="M5.6 7.9l1.7 1.7 3.2-3.3" /> : <path d="M8 5.6v3M8 10.6v.6" />}
+    </svg>
+  )
+}
+
+function BellIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" {...STROKE}>
+      <path d="M4 7a4 4 0 0 1 8 0c0 2.6.8 3.6 1.3 4.2H2.7C3.2 10.6 4 9.6 4 7z" />
+      <path d="M6.6 13.2a1.6 1.6 0 0 0 2.8 0" />
+    </svg>
+  )
+}
+
+function PowerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" {...STROKE}>
+      <path d="M8 2v6" />
+      <path d="M12.1 4.3a5.6 5.6 0 1 1-8.2 0" />
+    </svg>
   )
 }
 

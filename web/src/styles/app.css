@@ -1936,3 +1936,43 @@
 }
 
 .dt-fold:hover { color: var(--ink); }
+
+
+/* ── The watch list, at the size its pane actually is ──
+
+   The price pills were built for a wide dock: 72px of minimum width plus
+   16px of padding is 88px a side, and with a symbol column and a spread
+   column already spoken for there is not 88px a side in a 340px pane. So
+   the bid was clipped to four digits while the ask looked fine, which on
+   a watch list is the worst of both — a price you cannot read next to one
+   you can, with nothing saying which is which.
+
+   Inside this table the pills size to their content. They keep their
+   tinting, which is what they are for. */
+
+.table.mw .px {
+  min-width: 0;
+  padding: 2px 5px;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.table.mw th,
+.table.mw td {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.table.mw th {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+.table.mw .sym { font-size: 11px; }
+
+/* The source tag is the least of the five columns and goes first when
+   there is no room. */
+@media (max-width: 1500px) {
+  .table.mw .src,
+  .table.mw th:last-child { display: none; }
+}
