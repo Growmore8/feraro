@@ -1810,3 +1810,39 @@
 .mw-star:hover { color: var(--warn); }
 
 .mw-star.on { color: var(--warn); }
+
+
+/* ── The watch list must fit its pane ──
+
+   `table-layout: auto` sizes columns to their content, so a long price or
+   a wide symbol pushes the table past the pane and the Ask column slides
+   off the edge behind a scrollbar. In a watch list that is not a cosmetic
+   problem: the ask is the price somebody buys at, and a column you have to
+   scroll sideways to read is a column nobody reads.
+
+   Fixed layout makes the declared widths real and splits what is left
+   between bid and ask. The symbol truncates rather than widening, because
+   a clipped symbol beside a visible price is better than a whole symbol
+   and no price. */
+
+.table.mw {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table.mw .sym {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.table.mw .mw-sym {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The prices keep their digits: they are the content, and a truncated
+   price is worse than a truncated name. */
+.table.mw td.num {
+  white-space: nowrap;
+}

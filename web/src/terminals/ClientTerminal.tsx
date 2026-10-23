@@ -20,6 +20,8 @@ import { LevelCell } from '../components/LevelCell'
 import { MarketWatch, SOURCE_NAME } from '../components/MarketWatch'
 import type { PriceLine } from '../components/PriceChart'
 import { Sheet } from '../components/Sheet'
+import { ContextMenu } from '../components/ContextMenu'
+import type { MenuItem, MenuSubject } from '../components/ContextMenu'
 import { Splitter } from '../components/Splitter'
 import { useTape } from '../feed/useTape'
 import {
@@ -98,6 +100,13 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
   const [priceText, setPriceText] = useState('')
   const [ticketOpen, setTicketOpen] = useState(true)
   const [specOpen, setSpecOpen] = useState(false)
+  /** The open right-click menu, where it was opened, and on what. */
+  const [menu, setMenu] = useState<{
+    x: number
+    y: number
+    subject: MenuSubject
+    items: readonly MenuItem[]
+  } | null>(null)
   /**
    * How wide the two side columns are, in pixels, remembered per browser.
    *
@@ -157,6 +166,91 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
   const instruments: readonly Instrument[] = gw.connected ? gw.instruments : INSTRUMENTS
   const exchange = useFeed(INSTRUMENTS, { enabled: !gw.connected })
   const quotes: ReadonlyMap<number, FeedQuote> = gw.connected ? gw.quotes : exchange.quotes
+
+  /**
+   * What a right-click offers on a symbol.
+   *
+   * The same set Cubex has: deal, chart it, copy it, star it. The deal
+   * lines come first because that is what the menu is opened for — a
+   * trader right-clicks a row to trade it, and a menu that puts Copy
+   * Symbol at the top is a menu that has not been watched in use.
+   */
+  const symbolMenu = (id: number): readonly MenuItem[] => {
+    const inst = instruments.find((i) => i.id === id)
+    if (!inst) return []
+    const copy = () => void navigator.clipboard?.writeText(inst.symbol).catch(() => {})
+    const starred = favourites.includes(id)
+    return [
+      {
+        label: 'Buy at the market',
+        icon: '\u25b2',
+        disabled: !gw.connected,
+        onPick: () => {
+          setSelected(id)
+          gw.placeOrder({ instrumentId: id, side: 'buy', kind: 'market', qty: volume })
+        },
+      },
+      {
+        label: 'Sell at the market',
+        icon: '\u25bc',
+        tone: 'danger',
+        disabled: !gw.connected,
+        onPick: () => {
+          setSelected(id)
+          gw.placeOrder({ instrumentId: id, side: 'sell', kind: 'market', qty: volume })
+        },
+      },
+      '-',
+      {
+        label: 'New order',
+        icon: '\u26a1',
+        onPick: () => {
+          setSelected(id)
+          setTicketOpen(true)
+        },
+      },
+      { label: 'Open chart', icon: '\u25a5', onPick: () => setSelected(id) },
+      // The clipboard can be refused. The symbol is on screen either way,
+      // so this is a convenience failing rather than the thing failing.
+      { label: 'Copy symbol', icon: '\u29c9', onPick: copy },
+      {
+        label: starred ? 'Remove favourite' : 'Add favourite',
+        icon: starred ? '\u2605' : '\u2606',
+        onPick: () => star(id),
+      },
+    ]
+  }
+
+  /** What a right-click offers on an open position. */
+  const positionMenu = (p: GatewayPosition): readonly MenuItem[] => {
+    const step = stepOf(gw.instruments, p.instrumentId)
+    const half = halfOf(p.qty, step)
+    return [
+      {
+        label: 'Close this position',
+        icon: '\u2715',
+        tone: 'danger',
+        onPick: () => gw.closePosition(p.ticket),
+      },
+      {
+        label: 'Close half of it',
+        icon: '\u2702',
+        disabled: half === null,
+        hint: half === null ? 'too small to halve' : undefined,
+        onPick: () => {
+          if (half !== null) gw.closePosition(p.ticket, showQty(half))
+        },
+      },
+      '-',
+      { label: 'Open chart', icon: '\u25a5', onPick: () => setSelected(p.instrumentId) },
+      {
+        label: 'Copy ticket',
+        icon: '\u29c9',
+        onPick: () =>
+          void navigator.clipboard?.writeText(String(p.ticket)).catch(() => {}),
+      },
+    ]
+  }
 
   /** Where each symbol has been since this page opened. */
   const tape = useTape(quotes)
@@ -599,6 +693,23 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
       >
         <div className="col-dock">
           <Panel grow title="Market Watch" meta={`${instruments.length} symbols`}>
+            <div
+              className="fill"
+              onContextMenu={(e) => {
+                const row = (e.target as HTMLElement).closest('[data-instrument]')
+                const id = Number(row?.getAttribute('data-instrument'))
+                if (!Number.isFinite(id) || id <= 0) return
+                const inst = instruments.find((i) => i.id === id)
+                if (!inst) return
+                e.preventDefault()
+                setMenu({
+                  x: e.clientX,
+                  y: e.clientY,
+                  subject: { title: inst.symbol, subtitle: `${inst.base}/${inst.quote}` },
+                  items: symbolMenu(id),
+                })
+              }}
+            >
             <MarketWatch
               instruments={instruments}
               quotes={quotes}
@@ -608,6 +719,7 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
               favourites={favourites}
               onFavourite={star}
             />
+            </div>
           </Panel>
 
           <Panel title="My accounts" style={{ flex: 'none', maxHeight: 250 }}>
@@ -719,7 +831,28 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             />
           </Panel>
 
-          <section className="panel blotter">
+          <section
+            className="panel blotter"
+            onContextMenu={(e) => {
+              const row = (e.target as HTMLElement).closest('[data-ticket]')
+              const ticket = Number(row?.getAttribute('data-ticket'))
+              const held = positions.find((p) => p.ticket === ticket)
+              if (!held) return
+              e.preventDefault()
+              setMenu({
+                x: e.clientX,
+                y: e.clientY,
+                subject: {
+                  title: `${symbolOf(instruments, held.instrumentId)} \u00b7 ticket ${held.ticket}`,
+                  subtitle: `${showQtyAsLots(held.qty, contractOf(instruments, held.instrumentId), 3)} \u00b7 ${showSigned(held.profit)}`,
+                  badge: held.side === 'buy' ? 'BUY' : 'SELL',
+                  badgeTone: held.side === 'buy' ? 'ok' : 'bad',
+                  initial: held.side === 'buy' ? 'B' : 'S',
+                },
+                items: positionMenu(held),
+              })
+            }}
+          >
             <div className="blotter-tabs">
               {BLOTTER_TABS.map((t) => (
                 <button key={t} type="button" className={`tab${t === tab ? ' tab-on' : ''}`} onClick={() => setTab(t)}>
@@ -748,6 +881,7 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
                 columns={columns}
                 rows={positions}
                 rowKey={(p) => p.ticket}
+                rowData={(p) => ({ 'data-ticket': p.ticket })}
                 empty={gw.connected ? 'No open positions. Place one from the ticket.' : 'Gateway offline.'}
               />
             ) : tab === 'Pending' ? (
@@ -1009,6 +1143,15 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             }}
           />
         </Sheet>
+      ) : null}
+
+      {menu ? (
+        <ContextMenu
+          at={{ x: menu.x, y: menu.y }}
+          subject={menu.subject}
+          items={menu.items}
+          onClose={() => setMenu(null)}
+        />
       ) : null}
 
       <Toasts notices={notices} onDismiss={dismiss} />

@@ -1162,6 +1162,22 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   const positionMenu = (p: GatewayPosition): readonly MenuItem[] => {
     const digits = digitsOf(instruments, p.instrumentId)
     const symbol = symbolOf(instruments, p.instrumentId)
+    const tail: readonly MenuItem[] = [
+      '-',
+      {
+        label: 'Open chart',
+        icon: '\u25a5',
+        onPick: () => openChart(p.instrumentId),
+      },
+      {
+        label: 'Copy ticket',
+        icon: '\u29c9',
+        // The number somebody reads out on the phone to support. The
+        // clipboard can be refused; the ticket is on screen either way.
+        onPick: () =>
+          void navigator.clipboard?.writeText(String(p.ticket)).catch(() => {}),
+      },
+    ]
     return [
       {
         label: 'Close this position',
@@ -1271,8 +1287,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
             },
           }),
       },
-      '-',
-      { label: 'Chart this symbol', onPick: () => openChart(p.instrumentId) },
+      ...tail,
     ]
   }
 
@@ -1307,10 +1322,18 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         }),
     })
     return [
-      { label: 'Chart it', onPick: () => openChart(inst.id) },
-      '-',
       order('buy'),
       order('sell'),
+      '-',
+      { label: 'Open chart', icon: '\u25a5', onPick: () => openChart(inst.id) },
+      {
+        label: 'Copy symbol',
+        icon: '\u29c9',
+        // The clipboard can be refused. The symbol is on screen either
+        // way, so this is a convenience failing rather than the thing
+        // failing, and it says nothing when it does.
+        onPick: () => void navigator.clipboard?.writeText(inst.symbol).catch(() => {}),
+      },
     ]
   }
 
@@ -2093,8 +2116,8 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
                 x: e.clientX,
                 y: e.clientY,
                 subject: {
-                  title: `Ticket ${held.ticket}`,
-                  subtitle: `${symbolOf(instruments, held.instrumentId)} \u00b7 ${showQtyAsLots(held.qty, contractOf(instruments, held.instrumentId), 3)}`,
+                  title: `${symbolOf(instruments, held.instrumentId)} \u00b7 ticket ${held.ticket}`,
+                  subtitle: `${showQtyAsLots(held.qty, contractOf(instruments, held.instrumentId), 3)} \u00b7 ${showSigned(held.profit)}`,
                   badge: held.side === 'buy' ? 'BUY' : 'SELL',
                   badgeTone: held.side === 'buy' ? 'ok' : 'bad',
                   initial: held.side === 'buy' ? 'B' : 'S',

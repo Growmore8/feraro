@@ -170,13 +170,15 @@ export function MarketWatch({
               <th className="num" style={{ width: 44 }} title="Spread, in points">
                 Sprd
               </th>
-              <th
-                className="num"
-                style={{ width: 52 }}
-                title="Change since this page opened — not the day's change, which this platform cannot measure yet"
-              >
-                Chg
-              </th>
+              {trail ? (
+                <th
+                  className="num"
+                  style={{ width: 52 }}
+                  title="Change since this page opened — not the day's change, which this platform cannot measure yet"
+                >
+                  Chg
+                </th>
+              ) : null}
               <th style={{ width: 22 }} aria-label="Price source" />
             </tr>
           </thead>
@@ -185,7 +187,7 @@ export function MarketWatch({
               <Fragment key={name}>
                 {compact ? null : (
                   <tr className="mw-group" onClick={() => fold(name)}>
-                    <td colSpan={6}>
+                    <td colSpan={trail ? 6 : 5}>
                       <span className="mw-caret">{folded.has(name) ? '▸' : '▾'}</span>
                       {name}
                       <span className="mw-count">{members.length}</span>
@@ -245,18 +247,20 @@ export function MarketWatch({
                             </span>
                           </td>
                           <td className="num dim">{spread === null ? '—' : String(spread)}</td>
-                          <td className="num">
-                            {(() => {
-                              const pct = changeSince(trail, inst.id, q)
-                              if (pct === null) return <span className="dim">—</span>
-                              return (
-                                <span className={pct < 0 ? 'loss' : 'profit'}>
-                                  {pct >= 0 ? '+' : ''}
-                                  {pct.toFixed(1)}%
-                                </span>
-                              )
-                            })()}
-                          </td>
+                          {trail ? (
+                            <td className="num">
+                              {(() => {
+                                const pct = changeSince(trail, inst.id, q)
+                                if (pct === null) return <span className="dim">—</span>
+                                return (
+                                  <span className={pct < 0 ? 'loss' : 'profit'}>
+                                    {pct >= 0 ? '+' : ''}
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                )
+                              })()}
+                            </td>
+                          ) : null}
                           <td
                             className="src"
                             title={
@@ -274,7 +278,7 @@ export function MarketWatch({
             ))}
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={6} className="dim" style={{ padding: '10px 8px' }}>
+                <td colSpan={trail ? 6 : 5} className="dim" style={{ padding: '10px 8px' }}>
                   Nothing matches “{search}”.
                 </td>
               </tr>
