@@ -138,6 +138,15 @@ struct Stored {
     methods: Vec<Method>,
     #[serde(default)]
     requests: Vec<Request>,
+    /// The highest method id ever handed out.
+    ///
+    /// Kept rather than recomputed from the list, because the list shrinks:
+    /// taking `max + 1` over what is left hands a removed method's id to a
+    /// new one, and a request points at the method it was paid to. Absent
+    /// in a file written before this was tracked, where the highest id
+    /// present is the best that can be known.
+    #[serde(default)]
+    last_method: u64,
 }
 
 /// The payment file, loaded into memory.
@@ -146,6 +155,7 @@ pub struct Payments {
     path: PathBuf,
     methods: Vec<Method>,
     requests: Vec<Request>,
+    last_method: u64,
 }
 
 /// How many settled requests are kept. The desk needs recent history; a
@@ -166,8 +176,10 @@ impl Payments {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Stored::default(),
             Err(e) => return Err(e).with_context(|| format!("opening {}", path.display())),
         };
+        let highest = held.methods.iter().map(|m| m.id).max().unwrap_or(0);
         Ok(Payments {
             path: path.to_path_buf(),
+            last_method: held.last_method.max(highest),
             methods: held.methods,
             requests: held.requests,
         })
@@ -180,6 +192,7 @@ impl Payments {
         let text = serde_json::to_string_pretty(&Stored {
             methods: self.methods.clone(),
             requests: self.requests.clone(),
+            last_method: self.last_method,
         })?;
         // Written beside and renamed, so a crash mid-write cannot leave a
         // half a file where the payment details used to be.
@@ -238,7 +251,10 @@ impl Payments {
             None => {
                 // Ids are never reused: a request points at the method it
                 // was paid to, and that must keep meaning the same thing.
-                let next = self.methods.iter().map(|m| m.id).max().unwrap_or(0) + 1;
+                // Counted forward rather than taken from the list, which
+                // shrinks when a method is removed.
+                self.last_method += 1;
+                let next = self.last_method;
                 self.methods.push(Method {
                     id: next,
                     rail,

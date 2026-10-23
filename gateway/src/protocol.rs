@@ -149,6 +149,11 @@ pub enum ClientMessage {
     AdminRemovePaymentMethod { id: u64 },
     /// Desk: the deposit claims waiting to be checked.
     AdminDepositRequests,
+    /// What the house adds to each feed price, per instrument.
+    Markups,
+    /// Administrator: set one. Zero removes it.
+    #[serde(rename_all = "camelCase")]
+    AdminSetMarkup { instrument: u32, markup: String },
     /// Desk: "I have looked, and the money is there" — or it is not.
     ///
     /// Crediting is a separate, journaled deposit. This only closes the
@@ -401,6 +406,19 @@ pub struct AdminUserDto {
     pub manager: Option<u64>,
     /// That manager's login, joined here so the screen need not look it up.
     pub manager_login: Option<String>,
+}
+
+/// What the house adds to one instrument's price.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkupDto {
+    pub instrument: u32,
+    pub symbol: String,
+    /// Added to each side, so the spread widens by twice it.
+    pub markup: String,
+    /// The widened spread as it stands, in the instrument's own points, so
+    /// the desk can see what a client is actually quoted.
+    pub spread: Option<String>,
 }
 
 /// A way to pay money in, as the desk has set it up.
@@ -687,6 +705,9 @@ pub enum ServerMessage {
         /// which asks for the queue instead.
         mine: Vec<DepositRequestDto>,
     },
+    /// What the house adds to each price.
+    #[serde(rename_all = "camelCase")]
+    Markups { markups: Vec<MarkupDto> },
     /// Desk: the deposit claims, newest first.
     #[serde(rename_all = "camelCase")]
     DepositRequests { requests: Vec<DepositRequestDto> },

@@ -115,6 +115,13 @@ pub enum Command {
         ask: Price,
         /// The feed the aggregator chose.
         source: Source,
+        /// What the house adds to each side of this price.
+        ///
+        /// Supplied by the caller rather than read by the engine, because
+        /// it is configuration — a broker changes it — and the engine
+        /// holds journaled facts, not settings. Zero passes the feed's
+        /// price through untouched.
+        markup: Price,
     },
     /// A terminal wants to trade.
     ///
@@ -1258,7 +1265,8 @@ impl Engine {
                 bid,
                 ask,
                 source,
-            } => self.on_quote(instrument, bid, ask, source),
+                markup,
+            } => self.on_quote(instrument, bid, ask, source, markup),
             Command::Place {
                 by,
                 account,
@@ -1417,12 +1425,20 @@ impl Engine {
         }
     }
 
+    /// A new price from a feed.
+    ///
+    /// `bid` and `ask` are the feed's. `markup` is what the house adds to
+    /// each side, and it is applied *here* — once, on the way in — so that
+    /// everything downstream reads one number: what the client is shown,
+    /// fills at, is stopped out at, and has their open positions valued
+    /// against. A client must never deal at a price they were not shown.
     fn on_quote(
         &mut self,
         instrument: InstrumentId,
         bid: Price,
         ask: Price,
         source: Source,
+        markup: Price,
     ) -> Result<()> {
         if self.quote_source.get(&instrument) != Some(&source) {
             // Attribution for every fill that follows: the most recent change
@@ -1434,7 +1450,16 @@ impl Engine {
             self.quote_source.insert(instrument, source);
         }
         self.quote_at.insert(instrument, Instant::now());
-        self.portfolio.market.quote(instrument, bid, ask);
+        self.portfolio
+            .market
+            .quote_marked(instrument, bid, ask, markup);
+
+        // From here on, the client's price. Reading it back rather than
+        // recomputing it means there is exactly one place the widening
+        // happens, and a markup the market refused — one that would take
+        // the whole bid — cannot leak into a chart or a stop.
+        let (bid, ask) = self.portfolio.market.top(instrument).unwrap_or((bid, ask));
+
         // Every tick, not only the journaled ones: a bar's high and low are
         // the extremes the market actually printed, and a quarter-second
         // throttle would quietly shave them off.
@@ -1558,6 +1583,10 @@ impl Engine {
                         qty: order.qty,
                         price,
                         rate,
+                        // A resting order triggers on the client's price
+                        // like everything else, so it earns the same
+                        // markup a market order would have.
+                        markup: self.portfolio.market.markup_of(order.instrument),
                     })?;
                     self.announce_to(
                         order.account,
@@ -2046,6 +2075,10 @@ impl Engine {
             qty,
             price: fill,
             rate,
+            // What the house earned on this trade. `fill` already includes
+            // it — the client paid it — so this is the record, not a
+            // second charge.
+            markup: self.portfolio.market.markup_of(instrument),
         })?;
 
         self.announce_to(
@@ -2878,6 +2911,7 @@ mod tests {
             bid: p("80000.00"),
             ask: p("80000.01"),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
         let now = e.last_sync + Duration::from_secs(1);
@@ -2994,6 +3028,7 @@ mod tests {
             bid: p("2600.00"),
             ask: p("2600.01"),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
         e.handle(Command::Flush).unwrap();
@@ -3252,6 +3287,7 @@ mod tests {
             bid: p("80010.00"),
             ask: p("80010.01"),
             source: Source::KRAKEN,
+            markup: Price::ZERO,
         })
         .unwrap();
         drain(&mut rx);
@@ -3276,6 +3312,7 @@ mod tests {
                 bid: p("80000.00"),
                 ask: p(&format!("8000{i}.01")),
                 source: Source::BINANCE,
+                markup: Price::ZERO,
             })
             .unwrap();
         }
@@ -3286,6 +3323,7 @@ mod tests {
             bid: p("80000.00"),
             ask: p("80000.01"),
             source: Source::KRAKEN,
+            markup: Price::ZERO,
         })
         .unwrap();
         let after_switch = e.journal.next_seq().0 - before.0;
@@ -3308,6 +3346,7 @@ mod tests {
             bid: p("147.500"),
             ask: p("147.508"),
             source: Source::TWELVE_DATA,
+            markup: Price::ZERO,
         })
         .unwrap();
     }
@@ -3380,6 +3419,7 @@ mod tests {
             bid: p("148.500"),
             ask: p("148.508"),
             source: Source::TWELVE_DATA,
+            markup: Price::ZERO,
         })
         .unwrap();
         let ticket = e.portfolio.account(TRADER).unwrap().lots(USDJPY)[0].ticket;
@@ -3497,6 +3537,7 @@ mod tests {
             bid: p("80100.00"),
             ask: p("80100.01"),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
         e.handle(Command::Flush).unwrap();
@@ -3618,6 +3659,7 @@ mod tests {
             bid: p("78990.00"),
             ask: p("78999.00"),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -3687,6 +3729,7 @@ mod tests {
             bid: p("79000.00"),
             ask: p("79000.01"),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -3726,6 +3769,7 @@ mod tests {
             bid: p(bid),
             ask: p(ask),
             source: Source::BINANCE,
+            markup: Price::ZERO,
         })
         .unwrap();
     }
@@ -5633,6 +5677,7 @@ mod tests {
                 bid: p("148.500"),
                 ask: p("148.508"),
                 source: Source::TWELVE_DATA,
+                markup: Price::ZERO,
             })
             .unwrap();
             let ticket = e.portfolio.account(TRADER).unwrap().lots(USDJPY)[0].ticket;

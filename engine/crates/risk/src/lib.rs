@@ -229,6 +229,21 @@ pub enum Conversion {
 #[derive(Debug, Clone)]
 pub struct Market {
     quotes: BTreeMap<InstrumentId, (Price, Price)>,
+    /// What the house added to each side of the feed's price, per unit.
+    ///
+    /// # Why the market holds the client's price, not the feed's
+    ///
+    /// Everything downstream of here reads one price: what the client is
+    /// shown, what they fill at, what triggers their stop, what values
+    /// their open positions, and what the stop-out monitor watches. If the
+    /// market held the feed's price and the markup were applied only at the
+    /// fill, a client would deal at a price they never saw and a stop would
+    /// fire at one they did — which is the kind of difference that ends in
+    /// a complaint nobody can answer.
+    ///
+    /// So the widening happens once, on the way in, and this records how
+    /// much it was so a fill can journal what the house earned.
+    markups: BTreeMap<InstrumentId, Price>,
     /// The currency every account here is held in and every rate converts to.
     settlement: Currency,
     /// What each instrument is priced in, from its listing.
@@ -241,6 +256,7 @@ impl Default for Market {
     fn default() -> Self {
         Market {
             quotes: BTreeMap::new(),
+            markups: BTreeMap::new(),
             settlement: Currency::USD,
             quoted_in: BTreeMap::new(),
             routes: BTreeMap::new(),
@@ -349,9 +365,57 @@ impl Market {
             .collect()
     }
 
-    /// Records a new top of book.
+    /// Records a new top of book, exactly as given.
     pub fn quote(&mut self, instrument: InstrumentId, bid: Price, ask: Price) {
         self.quotes.insert(instrument, (bid, ask));
+        self.markups.remove(&instrument);
+    }
+
+    /// Records a top of book with the house's markup already applied.
+    ///
+    /// `markup` is added to each side, so the spread the client sees widens
+    /// by twice it. Two things are refused rather than stored:
+    ///
+    /// * a markup that would drive the bid to zero or below — there is no
+    ///   price at which the house may take the whole of a client's side;
+    /// * one that overflows.
+    ///
+    /// Either means a setting was entered wrong, and the honest response is
+    /// to quote the feed's price unchanged rather than an invented one.
+    ///
+    /// Note that no width of markup can cross the book: it moves the bid
+    /// down and the ask up, so the two only ever move apart. The bid
+    /// reaching zero is the real limit. Returns what was actually charged.
+    pub fn quote_marked(
+        &mut self,
+        instrument: InstrumentId,
+        bid: Price,
+        ask: Price,
+        markup: Price,
+    ) -> Price {
+        if markup <= Price::ZERO {
+            self.quote(instrument, bid, ask);
+            return Price::ZERO;
+        }
+        let (Ok(wide_bid), Ok(wide_ask)) = (bid.sub(markup), ask.add(markup)) else {
+            self.quote(instrument, bid, ask);
+            return Price::ZERO;
+        };
+        if wide_bid <= Price::ZERO || wide_bid >= wide_ask {
+            self.quote(instrument, bid, ask);
+            return Price::ZERO;
+        }
+        self.quotes.insert(instrument, (wide_bid, wide_ask));
+        self.markups.insert(instrument, markup);
+        markup
+    }
+
+    /// What the house is adding to each side of this instrument, or zero.
+    pub fn markup_of(&self, instrument: InstrumentId) -> Price {
+        self.markups
+            .get(&instrument)
+            .copied()
+            .unwrap_or(Price::ZERO)
     }
 
     /// Best bid and ask, if the instrument is quoted.
@@ -1625,6 +1689,11 @@ impl Portfolio {
                 qty,
                 price,
                 rate,
+                // The markup is already inside `price` — the client paid it.
+                // Posting it anywhere here would count it twice; it is
+                // journaled so the house can total what it earned, which is
+                // a report rather than a balance.
+                markup: _,
             } => {
                 let (owner, _) = *self
                     .order_owner
@@ -1865,6 +1934,121 @@ pub struct Applied {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The feed says 100.00 / 100.10; the house charges two points a side.
+    fn marked(markup: &str) -> (Market, Price) {
+        let mut m = Market::new();
+        let charged = m.quote_marked(
+            InstrumentId(1),
+            Price::parse("100.00").unwrap(),
+            Price::parse("100.10").unwrap(),
+            Price::parse(markup).unwrap(),
+        );
+        (m, charged)
+    }
+
+    #[test]
+    fn a_markup_widens_both_sides_and_is_remembered() {
+        let (m, charged) = marked("0.02");
+        assert_eq!(charged, Price::parse("0.02").unwrap());
+        // The client sells lower and buys higher than the feed.
+        assert_eq!(
+            m.top(InstrumentId(1)).unwrap().0,
+            Price::parse("99.98").unwrap()
+        );
+        assert_eq!(
+            m.top(InstrumentId(1)).unwrap().1,
+            Price::parse("100.12").unwrap()
+        );
+        assert_eq!(m.markup_of(InstrumentId(1)), Price::parse("0.02").unwrap());
+    }
+
+    #[test]
+    fn the_price_a_client_deals_at_is_the_one_they_are_shown() {
+        // This is the whole reason the widening happens here rather than at
+        // the fill: open, close and stop all read the same number.
+        let (m, _) = marked("0.02");
+        assert_eq!(
+            m.open_price(InstrumentId(1), Side::Buy).unwrap(),
+            Price::parse("100.12").unwrap()
+        );
+        assert_eq!(
+            m.close_price(InstrumentId(1), Side::Buy).unwrap(),
+            Price::parse("99.98").unwrap()
+        );
+    }
+
+    #[test]
+    fn no_markup_leaves_the_feed_alone() {
+        let (m, charged) = marked("0");
+        assert_eq!(charged, Price::ZERO);
+        assert_eq!(
+            m.top(InstrumentId(1)).unwrap().0,
+            Price::parse("100.00").unwrap()
+        );
+        assert_eq!(m.markup_of(InstrumentId(1)), Price::ZERO);
+    }
+
+    #[test]
+    fn widening_can_never_cross_the_book() {
+        // Worth stating because it is why there is no "spread too wide"
+        // refusal: the markup moves the bid down and the ask up, so however
+        // large it is the two move apart. The only way this goes wrong is
+        // the bid reaching zero, which is the test below.
+        let mut m = Market::new();
+        let charged = m.quote_marked(
+            InstrumentId(2),
+            Price::parse("1.00").unwrap(),
+            Price::parse("1.00").unwrap(),
+            Price::parse("0.60").unwrap(),
+        );
+        assert_eq!(charged, Price::parse("0.60").unwrap());
+        let (bid, ask) = m.top(InstrumentId(2)).unwrap();
+        assert_eq!(bid, Price::parse("0.40").unwrap());
+        assert_eq!(ask, Price::parse("1.60").unwrap());
+        assert!(bid < ask);
+    }
+
+    #[test]
+    fn a_markup_that_would_take_the_whole_bid_is_refused() {
+        // There is no price at which the house may take the entire client
+        // side. A setting that does is a typo, and the feed's price stands.
+        let mut m = Market::new();
+        let charged = m.quote_marked(
+            InstrumentId(1),
+            Price::parse("0.50").unwrap(),
+            Price::parse("0.60").unwrap(),
+            Price::parse("0.50").unwrap(),
+        );
+        assert_eq!(charged, Price::ZERO);
+        assert_eq!(
+            m.top(InstrumentId(1)).unwrap().0,
+            Price::parse("0.50").unwrap()
+        );
+        assert_eq!(m.markup_of(InstrumentId(1)), Price::ZERO);
+    }
+
+    #[test]
+    fn turning_a_markup_off_clears_it() {
+        let mut m = Market::new();
+        m.quote_marked(
+            InstrumentId(1),
+            Price::parse("100.00").unwrap(),
+            Price::parse("100.10").unwrap(),
+            Price::parse("0.02").unwrap(),
+        );
+        // The next quote arrives with no markup set.
+        m.quote(
+            InstrumentId(1),
+            Price::parse("100.00").unwrap(),
+            Price::parse("100.10").unwrap(),
+        );
+        assert_eq!(m.markup_of(InstrumentId(1)), Price::ZERO);
+        assert_eq!(
+            m.top(InstrumentId(1)).unwrap().1,
+            Price::parse("100.10").unwrap()
+        );
+    }
     use domain::{Seq, Symbol, Timestamp};
 
     /// Short constructors, so a test reads as the numbers it is about.
@@ -2634,6 +2818,7 @@ mod tests {
                 qty: q("0.50"),
                 price: p("80010.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
         ];
         for (i, e) in events.into_iter().enumerate() {
@@ -2689,6 +2874,7 @@ mod tests {
                     qty: q("1"),
                     price: p("80010.00"),
                     rate: Price::ONE,
+                    markup: Price::ZERO,
                 },
             ];
             for (i, e) in events.into_iter().enumerate() {
@@ -2740,6 +2926,7 @@ mod tests {
                 qty: q("1"),
                 price: p("70000.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
         ]
         .into_iter()
@@ -2772,6 +2959,7 @@ mod tests {
             qty: q("1"),
             price: p("80000.00"),
             rate: Price::ONE,
+            markup: Price::ZERO,
         };
         assert_eq!(
             pf.apply(&rec(1, orphan)),
@@ -2821,6 +3009,7 @@ mod tests {
                 qty: q("1"),
                 price: p("80000.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
             Event::QuoteTicked {
                 instrument: BTC,
@@ -3123,6 +3312,7 @@ mod tests {
                 qty: q("1"),
                 price: p("80000.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
             Event::SwapCharged {
                 account: TRADER,
@@ -3600,6 +3790,7 @@ mod tests {
                 qty: q("1"),
                 price: p("79500.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
             // A newer parcel bought above it: the bigger loser.
             Event::OrderAccepted {
@@ -3620,6 +3811,7 @@ mod tests {
                 qty: q("1"),
                 price: p("80600.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
         ];
 
@@ -3702,6 +3894,7 @@ mod tests {
                 qty: q("0.10"),
                 price: p("80010.00"),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
             Event::ProtectionSet {
                 account: TRADER,
@@ -4222,6 +4415,7 @@ mod tests {
                 qty: q("100000"),
                 price: p("147.508"),
                 rate: p("147.504"),
+                markup: Price::ZERO,
             },
             Event::OrderAccepted {
                 order: OrderId(2),
@@ -4242,6 +4436,7 @@ mod tests {
                 qty: q("100000"),
                 price: p("148.500"),
                 rate: p("148.504"),
+                markup: Price::ZERO,
             },
             // ... and then the yen moves a long way, as it does.
             Event::QuoteTicked {

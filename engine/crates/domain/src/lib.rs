@@ -479,6 +479,28 @@ pub enum Event {
         /// been written down. Carrying it here keeps replay exact, which is
         /// invariant P0-2.
         rate: Price,
+        /// What the house added to the feed's price to get `price`, per
+        /// unit, as a positive number on whichever side the client dealt.
+        ///
+        /// # Why the markup is in the event
+        ///
+        /// `price` is what the client got, and that is the only price the
+        /// account's money is computed from. But the difference between it
+        /// and the price the market was actually showing is the platform's
+        /// earnings on the trade, and a broker has to be able to total
+        /// that — per day, per symbol, per client — long after the quote
+        /// that produced it has gone.
+        ///
+        /// Quotes are not journaled, so it cannot be recovered later by
+        /// looking: the feed's price at that instant was never written
+        /// down. Nor can it be derived from the markup *setting*, because
+        /// settings change and the old value is not kept. So it is carried
+        /// on the fill, where it is a fact about one trade rather than a
+        /// reading of configuration that has since moved.
+        ///
+        /// Zero on a fill from a build that had no markup, and zero
+        /// whenever none is charged.
+        markup: Price,
     },
     /// Margin level fell below the call threshold.
     MarginCallIssued {
@@ -854,7 +876,10 @@ impl Event {
             // trade an instrument quoted in anything but the account's
             // currency — it still decodes, with a rate of one, which is
             // exactly what it was. It is never written again.
-            Event::OrderFilled { .. } => 0x46,
+            // A fill now carries the markup the house earned on it as well
+            // as the conversion rate. `0x46` is the same event without it
+            // and still decodes, with a markup of zero.
+            Event::OrderFilled { .. } => 0x4E,
             Event::PendingOrderPlaced { .. } => 0x37,
             Event::PendingOrderTriggered { .. } => 0x35,
             Event::MarginCallIssued { .. } => 0x40,
@@ -1280,6 +1305,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             qty,
             price,
             rate,
+            markup,
         } => {
             w.u64(order.0);
             w.u32(instrument.0);
@@ -1287,6 +1313,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             w.qty(qty);
             w.price(price);
             w.price(rate);
+            w.price(markup);
         }
         Event::PendingOrderPlaced {
             by,
@@ -1562,7 +1589,10 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             qty: r.qty()?,
             price: r.price()?,
             rate: Price::ONE,
+            markup: Price::ZERO,
         },
+        // A fill with a conversion rate but no markup: the shape before
+        // the house charged one.
         0x46 => Event::OrderFilled {
             order: OrderId(r.u64()?),
             instrument: InstrumentId(r.u32()?),
@@ -1570,6 +1600,16 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             qty: r.qty()?,
             price: r.price()?,
             rate: r.price()?,
+            markup: Price::ZERO,
+        },
+        0x4E => Event::OrderFilled {
+            order: OrderId(r.u64()?),
+            instrument: InstrumentId(r.u32()?),
+            side: r.side()?,
+            qty: r.qty()?,
+            price: r.price()?,
+            rate: r.price()?,
+            markup: r.price()?,
         },
         0x34 => Event::PendingOrderPlaced {
             by: UserId::SYSTEM,
@@ -1789,6 +1829,7 @@ mod tests {
                 qty: Qty::parse("60000").unwrap(),
                 price: Price::parse("1.08500").unwrap(),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
             Event::PendingOrderPlaced {
                 order: OrderId(9),
@@ -1954,12 +1995,14 @@ mod tests {
                 qty: Qty::parse("60000").unwrap(),
                 price: Price::parse("1.08500").unwrap(),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
         };
         let bytes = encode(&record);
-        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8);
+        // ... + price + rate + markup.
+        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8 + 8);
         assert_eq!(&bytes[..2], &WIRE_VERSION.to_le_bytes());
-        assert_eq!(bytes[18], 0x46);
+        assert_eq!(bytes[18], 0x4E);
     }
 
     #[test]
@@ -1975,15 +2018,17 @@ mod tests {
             qty: Qty::parse("60000").unwrap(),
             price: Price::parse("1.08500").unwrap(),
             rate: Price::ONE,
+            markup: Price::ZERO,
         };
         let mut bytes = encode(&Record {
             seq: Seq(42),
             at: Timestamp(0),
             event: legacy,
         });
-        // Rewrite it as the old tag would have: 0x33, and no trailing rate.
+        // Rewrite it as the oldest tag would have: 0x33, and neither the
+        // rate nor the markup on the end.
         bytes[18] = 0x33;
-        bytes.truncate(bytes.len() - 8);
+        bytes.truncate(bytes.len() - 16);
         assert_eq!(decode(&bytes).expect("legacy fill decodes").event, legacy);
 
         // A stop-out from before either the rate or the ticket was recorded.
@@ -2037,6 +2082,60 @@ mod tests {
     }
 
     #[test]
+    fn a_fill_written_before_markup_existed_still_replays() {
+        // Tag 0x46 is a fill with a conversion rate but no markup: the
+        // shape before the house charged one. A journal full of them must
+        // fold to the same state, with nothing earned on the spread —
+        // because nothing was.
+        let before = Event::OrderFilled {
+            order: OrderId(7),
+            instrument: InstrumentId(1),
+            side: Side::Buy,
+            qty: Qty::parse("60000").unwrap(),
+            price: Price::parse("1.08500").unwrap(),
+            rate: Price::parse("147.500").unwrap(),
+            markup: Price::ZERO,
+        };
+        let mut bytes = encode(&Record {
+            seq: Seq(9),
+            at: Timestamp(0),
+            event: before,
+        });
+        bytes[18] = 0x46;
+        bytes.truncate(bytes.len() - 8);
+        assert_eq!(
+            decode(&bytes).expect("a fill without markup decodes").event,
+            before
+        );
+    }
+
+    #[test]
+    fn a_markup_survives_the_wire_to_the_last_place() {
+        // What the house earned is read back off the journal to total it,
+        // so it has to cross with every digit intact — the same reason the
+        // conversion rate does.
+        let markup = Price::parse("0.000120007").unwrap();
+        let record = Record {
+            seq: Seq(1),
+            at: Timestamp(0),
+            event: Event::OrderFilled {
+                order: OrderId(1),
+                instrument: InstrumentId(30),
+                side: Side::Sell,
+                qty: Qty::parse("1000").unwrap(),
+                price: Price::parse("147.500").unwrap(),
+                rate: Price::ONE,
+                markup,
+            },
+        };
+        let back = decode(&encode(&record)).expect("a marked-up fill decodes");
+        let Event::OrderFilled { markup: got, .. } = back.event else {
+            panic!("expected a fill");
+        };
+        assert_eq!(got, markup);
+    }
+
+    #[test]
     fn a_conversion_rate_survives_the_wire_to_the_last_place() {
         // The rate is what makes a replayed yen P&L exact, so it has to cross
         // with every digit intact.
@@ -2051,6 +2150,7 @@ mod tests {
                 qty: Qty::parse("1000").unwrap(),
                 price: Price::parse("147.500").unwrap(),
                 rate,
+                markup: Price::ZERO,
             },
         };
         let Event::OrderFilled { rate: back, .. } = decode(&encode(&record)).unwrap().event else {

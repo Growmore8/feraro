@@ -757,6 +757,7 @@ mod tests {
                 qty: Qty::parse("100000").unwrap(),
                 price: Price::parse("1.08532").unwrap(),
                 rate: Price::ONE,
+                markup: Price::ZERO,
             },
         ]
     }

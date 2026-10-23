@@ -17,6 +17,7 @@ mod candles;
 mod engine;
 mod feeds;
 mod instruments;
+mod markups;
 mod payments;
 mod protocol;
 mod snapshot;
@@ -40,10 +41,11 @@ use crate::engine::{
     amend_reason_from, AdminAction, AdminOutcome, Amendment, Broadcast, Command, Engine,
     EngineConfig, FLUSH_INTERVAL,
 };
+use crate::markups::Markups;
 use crate::payments::{Payments, Rail};
 use crate::protocol::{
     instrument_id, kind_from, price_str, side_from, AccountSummaryDto, AdminUserDto, BarDto,
-    ClientMessage, DepositRequestDto, PaymentMethodDto, ServerMessage,
+    ClientMessage, DepositRequestDto, MarkupDto, PaymentMethodDto, ServerMessage,
 };
 
 /// The most audit lines the gateway will send in one answer.
@@ -184,8 +186,25 @@ async fn main() -> Result<()> {
         payments_path.display()
     );
 
+    let markups_path = std::env::var("FERARO_MARKUPS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| journal_dir.join("markups.json"));
+    let markups = Arc::new(Mutex::new(
+        Markups::load(&markups_path)
+            .with_context(|| format!("reading {}", markups_path.display()))?,
+    ));
+    {
+        let held = markups.lock().expect("the markup lock");
+        println!(
+            "markups: {} instrument(s) marked up, from {}",
+            held.all().count(),
+            markups_path.display()
+        );
+    }
+
     let gate = Gate {
         users: Arc::new(Mutex::new(users)),
+        markups: markups.clone(),
         sessions: Arc::new(Mutex::new(auth::Sessions::new())),
         payments: Arc::new(Mutex::new(payments)),
     };
@@ -202,7 +221,7 @@ async fn main() -> Result<()> {
 
     tokio::spawn(engine.run(commands_rx));
     let pulse = Arc::new(Pulse::default());
-    spawn_feeds(commands_tx.clone(), pulse.clone());
+    spawn_feeds(commands_tx.clone(), pulse.clone(), gate.markups.clone());
 
     // The flush tick is what turns hundreds of upstream ticks a second into
     // ten broadcasts a second.
@@ -290,7 +309,7 @@ impl Pulse {
     }
 }
 
-fn spawn_feeds(commands: mpsc::Sender<Command>, pulse: Arc<Pulse>) {
+fn spawn_feeds(commands: mpsc::Sender<Command>, pulse: Arc<Pulse>, markups: Arc<Mutex<Markups>>) {
     use crate::feeds::aggregator::Aggregator;
     use crate::feeds::{self, binance, finnhub, kraken, twelvedata, FeedUpdate, Source};
     use crate::instruments::{catalogue, subscriptions};
@@ -380,11 +399,19 @@ fn spawn_feeds(commands: mpsc::Sender<Command>, pulse: Arc<Pulse>) {
                         );
                     }
                     pulse.beat();
+                    // Read per tick rather than cached, so a markup the
+                    // desk changes takes effect on the next price rather
+                    // than on the next restart.
+                    let markup = markups
+                        .lock()
+                        .expect("the markup lock")
+                        .of(quote.instrument);
                     let _ = commands.try_send(Command::Quote {
                         instrument: quote.instrument,
                         bid: quote.bid,
                         ask: quote.ask,
                         source: quote.source,
+                        markup,
                     });
                 }
                 Ok(None) => {}
@@ -563,6 +590,8 @@ struct Gate {
     sessions: Arc<Mutex<auth::Sessions>>,
     /// How money may be paid in, and the claims waiting to be checked.
     payments: Arc<Mutex<Payments>>,
+    /// What the house adds to each feed price.
+    markups: Arc<Mutex<Markups>>,
 }
 
 /// What one connection is allowed to do, once it has signed in.
@@ -907,6 +936,8 @@ async fn session(
                             | ClientMessage::AdminRemovePaymentMethod { .. }
                             | ClientMessage::AdminDepositRequests
                             | ClientMessage::AdminSettleDeposit { .. }
+                            | ClientMessage::Markups
+                            | ClientMessage::AdminSetMarkup { .. }
                             | ClientMessage::AdminSetPassword { .. }) => {
                                 if let Some(detail) = desk_refusal(session, &admin_message) {
                                     send(&mut sink, &ServerMessage::Unauthorized { detail }).await?;
@@ -1164,6 +1195,12 @@ fn desk_refusal(session: &Signed, message: &ClientMessage) -> Option<&'static st
         ClientMessage::AdminPutPaymentMethod { .. }
         | ClientMessage::AdminRemovePaymentMethod { .. } => {
             Some("only an administrator may change where money is paid")
+        }
+        // What every client is quoted is the platform's pricing. A manager
+        // reads it — they are asked why a spread is what it is — but does
+        // not set it.
+        ClientMessage::AdminSetMarkup { .. } => {
+            Some("only an administrator may change what the house charges")
         }
         // Confirming money arrived credits an account, which is the same
         // decision as a deposit and goes the same way.
@@ -1574,6 +1611,64 @@ async fn administer(
                 Ok(()) => ServerMessage::AdminResult {
                     done: true,
                     detail: format!("Removed payment method {id}."),
+                },
+                Err(why) => ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("Refused: {why}"),
+                },
+            })
+        }
+
+        ClientMessage::Markups => {
+            // Copied out and the lock dropped before anything else: a
+            // guard held across an await is a future that cannot be sent
+            // between threads, and tokio says so at compile time.
+            let set: std::collections::BTreeMap<u32, money::Price> = {
+                let held = gate.markups.lock().expect("the markup lock");
+                held.all().map(|(id, p)| (id.0, p)).collect()
+            };
+
+            // Every listed instrument, not only the marked-up ones: the
+            // desk is deciding what to charge, and a list that hides the
+            // ones charging nothing hides exactly what it needs to see.
+            let markups = instruments::catalogue()
+                .iter()
+                .map(|listing| {
+                    let id = listing.terms.instrument.id;
+                    let markup = set.get(&id.0).copied().unwrap_or(money::Price::ZERO);
+                    MarkupDto {
+                        instrument: id.0,
+                        symbol: listing.terms.instrument.symbol.to_string(),
+                        markup: markup.to_string(),
+                        spread: None,
+                    }
+                })
+                .collect();
+            Ok(ServerMessage::Markups { markups })
+        }
+
+        ClientMessage::AdminSetMarkup { instrument, markup } => {
+            let Ok(price) = money::Price::parse(markup.trim()) else {
+                return Ok(ServerMessage::AdminResult {
+                    done: false,
+                    detail: format!("{markup:?} is not a price I can charge."),
+                });
+            };
+            let set = gate
+                .markups
+                .lock()
+                .expect("the markup lock")
+                .set(domain::InstrumentId(instrument), price);
+            Ok(match set {
+                Ok(()) => ServerMessage::AdminResult {
+                    done: true,
+                    detail: if price == money::Price::ZERO {
+                        format!("Instrument {instrument} is quoted at the feed's price.")
+                    } else {
+                        format!(
+                            "Instrument {instrument} is marked up {price} a side - the spread a client sees widens by twice that. It takes effect on the next tick."
+                        )
+                    },
                 },
                 Err(why) => ServerMessage::AdminResult {
                     done: false,
