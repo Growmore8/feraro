@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { halfOf, stepOf } from '../lib/positions'
 import { Wallet } from '../components/Wallet'
 import type { WalletTab } from '../components/Wallet'
 import { ChartPane } from '../components/ChartPane'
@@ -45,6 +46,7 @@ import {
   showMarginLevel,
   showMoney,
   showPrice,
+  showQty,
   showQtyAsLots,
   showSigned,
 } from '../lib/money'
@@ -346,6 +348,23 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
                   onClose={() => {
                     if (window.confirm(`Close ticket ${p.ticket}?`)) gw.closePosition(p.ticket)
                   }}
+                  onHalf={
+                    halfOf(p.qty, stepOf(gw.instruments, p.instrumentId)) === null
+                      ? null
+                      : () => {
+                          const half = halfOf(
+                            p.qty,
+                            stepOf(gw.instruments, p.instrumentId),
+                          )
+                          if (half === null) return
+                          if (
+                            window.confirm(
+                              `Close half of ticket ${p.ticket}? The rest stays open at the price it got.`,
+                            )
+                          )
+                            gw.closePosition(p.ticket, showQty(half))
+                        }
+                  }
                 />
               ))
             )}
@@ -736,12 +755,15 @@ function TradeCard({
   ticked,
   onTick,
   onClose,
+  onHalf,
 }: {
   position: GatewayPosition
   instrument: Instrument
   ticked: boolean
   onTick(): void
   onClose(): void
+  /** Null when the position is too small to halve on its step grid. */
+  onHalf: (() => void) | null
 }) {
   const d = instrument.displayDigits
   return (
@@ -768,9 +790,18 @@ function TradeCard({
         <span className={`mob-pnl ${position.profit < 0n ? 'loss' : 'profit'}`}>
           {showSigned(position.profit)}
         </span>
-        <button type="button" onClick={onClose}>
-          Close
-        </button>
+        <div className="mob-trade-acts">
+          {/* Offered only when there is a half to take: a button that does
+              nothing teaches a trader not to trust the others. */}
+          {onHalf ? (
+            <button type="button" className="mob-half" onClick={onHalf}>
+              Half
+            </button>
+          ) : null}
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
     </article>
   )

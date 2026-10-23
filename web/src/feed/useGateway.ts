@@ -30,7 +30,7 @@ export interface GatewayView extends GatewayState {
   /** The most recent events, newest first, capped. */
   readonly events: readonly GatewayEvent[]
   placeOrder(order: OrderRequest): void
-  closePosition(ticket: number): void
+  closePosition(ticket: number, qty?: string): void
   cancelOrder(ticket: number): void
   setProtection(ticket: number, stopLoss: Price | null, takeProfit: Price | null): void
   acknowledge(index: number): void
@@ -204,8 +204,8 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     clientRef.current?.place(order)
   }, [])
 
-  const closePosition = useCallback((ticket: number) => {
-    clientRef.current?.close(ticket)
+  const closePosition = useCallback((ticket: number, qty = '') => {
+    clientRef.current?.close(ticket, qty)
   }, [])
 
   const cancelOrder = useCallback((ticket: number) => {

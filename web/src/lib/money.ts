@@ -167,6 +167,16 @@ export const showPrice = (p: Price, digits: number): string =>
   formatRounded(p, PRICE_DIGITS, digits)
 
 /** Renders a quantity in lots, given the instrument's contract size. */
+/**
+ * A quantity as the engine deals in it, not as lots.
+ *
+ * The wire's sizes are quantities — units of the base asset — and this is
+ * how one is written back to it. Full precision by default, because a
+ * rounded size sent to the engine is a different size.
+ */
+export const showQty = (q: Qty, digits = QTY_DIGITS): string =>
+  formatRounded(q, QTY_DIGITS, digits)
+
 export const showQtyAsLots = (q: Qty, contractSize: Qty, digits = 2): string =>
   formatRounded(divRound(q * QTY_ONE, contractSize), QTY_DIGITS, digits)
 

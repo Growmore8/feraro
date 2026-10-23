@@ -97,14 +97,27 @@ import { clampPane, DEFAULT_LAYOUT, readLayout, toggled, writeLayout } from '../
 import type { Money, Price, Qty } from '../lib/money'
 import {
   price as parsePrice,
+  QTY_ONE,
   showMarginLevel,
   showMoney,
   showPrice,
+  showQty,
   showQtyAsLots,
   showSigned,
   qty,
 } from '../lib/money'
 import './ManagerTerminal.css'
+
+/**
+ * Lots as a quantity, and back.
+ *
+ * The blotter's Volume column is lots — size divided by the contract — so
+ * the figure somebody reads off a row is the figure they should be able to
+ * type back. The wire deals in quantities, so the conversion happens here
+ * rather than being left to whoever is looking at the screen.
+ */
+const asQty = (lots: Qty, contract: Qty): Qty =>
+  ((lots * contract) / QTY_ONE) as Qty
 
 /** The ellipsis a menu label ends with when it opens a dialog. */
 const DOTS = '\u2026'
@@ -1156,6 +1169,59 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         onPick: () => {
           if (window.confirm(`Close ticket ${p.ticket} on account ${selected}?`))
             gw.closePosition(p.ticket)
+        },
+      },
+      {
+        label: 'Close part of it' + DOTS,
+        hint: showQtyAsLots(p.qty, contractOf(instruments, p.instrumentId), 3),
+        onPick: () => {
+          const contract = contractOf(instruments, p.instrumentId)
+          const whole = showQtyAsLots(p.qty, contract, 3)
+          setAsk({
+            title: `Close part of ticket ${p.ticket}`,
+            subject: `${symbol}, ${whole} open at ${showPrice(p.openPrice, digits)}`,
+            icon: '\u2702',
+            note: 'What is left stays open at the price it got, which is the point: closing it all and re-opening pays the spread twice and gives up the entry. Type less than the volume shown.',
+            fields: [
+              {
+                key: 'lots',
+                label: 'Volume to close',
+                mode: 'decimal' as const,
+                // Pre-filled with the whole position, because a default
+                // that gets refused is worse than one that does nothing
+                // surprising: half of an odd size can land off the step
+                // grid, and the engine would turn it away.
+                initial: whole,
+              },
+            ],
+            submitLabel: 'Close that much',
+            tone: 'danger' as const,
+            run: ({ lots }) => {
+              let typed
+              try {
+                typed = qty((lots ?? '').trim())
+              } catch {
+                return
+              }
+              if (typed <= 0n) return
+              const size = asQty(typed, contract)
+              if (
+                !window.confirm(
+                  `Close ${lots} of ticket ${p.ticket}? ${
+                    size >= p.qty
+                      ? 'That is the whole position.'
+                      : `${showQtyAsLots((p.qty - size) as Qty, contract, 3)} stays open at ${showPrice(p.openPrice, digits)}.`
+                  }`,
+                )
+              )
+                return
+              // Zero would mean "all of it", and a size at or above the
+              // position means the same, so either way the engine closes
+              // the lot. Sent as a quantity, which is what the wire deals
+              // in.
+              gw.closePosition(p.ticket, showQty(size))
+            },
+          })
         },
       },
       '-',

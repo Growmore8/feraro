@@ -62,6 +62,17 @@ replay. That is the cost of this architecture and it is paid deliberately.
       so a one-time password is used once. Offered to desk logins only — a
       client cannot move money without the desk agreeing — and the desk
       screen says so until it is set up.
+- [x] **Partial close** *(engine)* — and it needed no new event tag:
+      `PositionClosed` already carried a size the fold was throwing away.
+      The remainder keeps its ticket, its side and the price it opened at,
+      which is the whole point — closing it all and re-opening pays the
+      spread twice. A size must sit on the step grid so nothing unclosable
+      is left behind. Half, in one press, on the client screen and the
+      phone.
+- [x] **Commission on a hedged close** — it was free, while a netting
+      close was charged, because the hedged path bypassed the fill and the
+      event had nowhere to put the figure. A new tag carries it; the old
+      one decodes as zero, because those closes really were free. *(engine)*
 
 ## Next, in order
 
@@ -75,7 +86,11 @@ Ordered by what a broker needs to operate, not by size.
       Fetching a QR tells an image service the secret, and a hand-written
       encoder cannot be tested here without also writing a decoder — so it
       waits for one that can be.
-- [ ] **Partial close** *(engine)* and **modify an open trade**.
+- [ ] **Amend a resting order** — change its trigger price or volume
+      without cancelling. Today a trader cancels and re-places, which
+      leaves a window with no order on the book at all: if the market gaps
+      through the level in that window they get nothing. (Stop loss and
+      take profit on an *open* position already work.)
 - [ ] **Trailing stop** *(engine)* and **expiry on resting orders**.
 - [ ] **Per-account risk settings** — leverage, margin-call level, maximum
       lot, swap-free. *(engine, mostly)*

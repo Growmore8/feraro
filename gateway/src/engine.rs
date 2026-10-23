@@ -155,11 +155,13 @@ pub enum Command {
         stop_loss: Price,
         take_profit: Price,
     },
-    /// A terminal wants to close a position in full.
+    /// A terminal wants to close a position, or part of one.
     Close {
         by: UserId,
         account: AccountId,
         ticket: OrderId,
+        /// How much to close. Zero means all of it.
+        qty: Qty,
     },
     /// A terminal wants to withdraw a resting order.
     CancelOrder {
@@ -559,6 +561,16 @@ fn statement_entry(
     ))
 }
 
+/// True when `value` is a whole multiple of `step`.
+///
+/// A step of zero means no grid, so everything is on it. The same rule the
+/// risk crate applies to an order's size, said again here because a close
+/// is judged against the same grid and the risk crate's copy is private to
+/// its own admission.
+fn multiple_of(value: Qty, step: Qty) -> bool {
+    step.is_zero() || value.raw() % step.raw() == 0
+}
+
 /// True when `price` sits on the instrument's tick grid.
 fn price_on_tick(price: Price, tick: Price) -> bool {
     tick.is_zero() || price.raw() % tick.raw() == 0
@@ -688,9 +700,22 @@ fn post_to_books(
         return Ok(());
     }
 
-    // A close: trading profit and its financing, in one transaction.
+    // What closing cost rides in the same transaction as what it made,
+    // because one journal record gets one transaction id — the ledger
+    // refuses a second, and that guard is what makes a replay safe.
+    //
+    // Only a hedged close has a charge here; a netting close is an opposing
+    // order and its charge rides on `OrderFilled` above, reaching the same
+    // book by the other road.
+    let charge = match record.event {
+        Event::PositionClosed { commission, .. } => commission,
+        _ => Money::ZERO,
+    };
+
+    // A close: trading profit, its financing, and the charge, in one
+    // transaction.
     if let Some((account, realised)) = applied.realised {
-        if realised.is_zero() {
+        if realised.is_zero() && charge.is_zero() {
             // Opening a position realises nothing. No postings, no noise.
             return Ok(());
         }
@@ -701,6 +726,7 @@ fn post_to_books(
             currency_of(account),
             realised.profit,
             realised.swap,
+            charge,
         )
         .map_err(|e| anyhow::anyhow!("building a close for {}: {e}", record.seq.0))?;
         ledger
@@ -1419,7 +1445,8 @@ impl Engine {
                 by,
                 account,
                 ticket,
-            } => self.on_close(by, account, ticket),
+                qty,
+            } => self.on_close(by, account, ticket, qty),
             Command::CancelOrder {
                 by,
                 account,
@@ -1769,7 +1796,14 @@ impl Engine {
             let Some(holder) = self.portfolio.account_mut(account) else {
                 continue;
             };
-            let realised = holder.close_lot(instrument, hit.ticket, hit.price, rate)?;
+            let realised = holder.close_lot(
+                instrument,
+                hit.ticket,
+                hit.qty,
+                hit.price,
+                rate,
+                money::Money::ZERO,
+            )?;
             self.append_realised(
                 Event::ProtectionTriggered {
                     account,
@@ -1929,10 +1963,15 @@ impl Engine {
             return Ok(());
         };
 
+        // Charged here as it is on a fill. Until this existed, a hedged
+        // close was free and a netting one was not, which made the charge
+        // depend on a setting that has nothing to do with pricing.
+        let commission = commission_on(&self.portfolio.market, instrument, qty)?;
+
         let Some(holder) = self.portfolio.account_mut(account) else {
             return Ok(());
         };
-        let realised = holder.close_lot(instrument, ticket, price, rate)?;
+        let realised = holder.close_lot(instrument, ticket, qty, price, rate, commission)?;
         self.append_realised(
             Event::PositionClosed {
                 account,
@@ -1941,6 +1980,7 @@ impl Engine {
                 qty,
                 price,
                 rate,
+                commission,
                 by,
             },
             risk::Applied {
@@ -2337,7 +2377,13 @@ impl Engine {
         self.on_flush()
     }
 
-    fn on_close(&mut self, by: UserId, account: AccountId, ticket: OrderId) -> Result<()> {
+    fn on_close(
+        &mut self,
+        by: UserId,
+        account: AccountId,
+        ticket: OrderId,
+        asked: Qty,
+    ) -> Result<()> {
         let Some(holder) = self.portfolio.account(account) else {
             self.announce_to(
                 account,
@@ -2367,10 +2413,18 @@ impl Engine {
             return Ok(());
         };
 
+        // How much of it is going. Zero means all, which is what every
+        // terminal meant before it could say otherwise.
+        let closing = if asked.is_zero() { qty } else { asked };
+        if let Some(why) = self.closable(instrument, qty, closing) {
+            self.announce_to(account, ServerMessage::Rejected { reason: why });
+            return Ok(());
+        }
+
         // On a hedging account the ticket is the whole point: an opposing
         // order would open a third position rather than close this one.
         if self.portfolio.account(account).is_some_and(|a| a.hedging) {
-            return self.close_by_ticket(by, account, instrument, ticket, side, qty);
+            return self.close_by_ticket(by, account, instrument, ticket, side, closing);
         }
 
         // Netting: closing is just an opposing market order, and it needs no
@@ -2382,15 +2436,53 @@ impl Engine {
                 instrument,
                 side: side.opposite(),
                 kind: OrderType::Market,
-                qty,
+                qty: closing,
                 price: Price::ZERO,
                 // Closing is charged like any other fill — a broker that
                 // charges to open and not to close is a broker with half a
                 // commission model.
-                commission: commission_on(&self.portfolio.market, instrument, qty)?,
+                commission: commission_on(&self.portfolio.market, instrument, closing)?,
             },
             Price::ZERO,
         )
+    }
+
+    /// Whether `closing` may be taken off a parcel of `held`.
+    ///
+    /// # Why a remainder has rules
+    ///
+    /// Closing part of a position leaves the rest of it open, and the rest
+    /// has to be a position the platform can still deal with. A remainder
+    /// below the minimum size, or off the step grid, is one no ordinary
+    /// order can ever close — the trader would be stuck with it and would
+    /// have to ask the desk to clear it by hand. So the size closed must
+    /// sit on the grid, and what is left must either be nothing or a size
+    /// that could have been opened in the first place.
+    ///
+    /// The maximum is deliberately not checked: it bounds what may be
+    /// *opened*, and a parcel already larger than it — opened before the
+    /// limit changed — must still be closeable.
+    fn closable(&self, instrument: InstrumentId, held: Qty, closing: Qty) -> Option<&'static str> {
+        let Some(terms) = self.terms.get(&instrument) else {
+            return Some(reason_str(RejectReason::UnknownInstrument));
+        };
+        if closing <= Qty::ZERO || closing > held {
+            return Some(reason_str(RejectReason::InvalidQuantity));
+        }
+        // The whole parcel always goes, whatever its size and whatever the
+        // step is today: a position that cannot be closed is not a position
+        // anybody should be left holding.
+        if closing == held {
+            return None;
+        }
+        if !multiple_of(closing, terms.qty_step) {
+            return Some(reason_str(RejectReason::InvalidQuantity));
+        }
+        let rest = held.sub(closing).unwrap_or(Qty::ZERO);
+        if rest < terms.min_qty || !multiple_of(rest, terms.qty_step) {
+            return Some(reason_str(RejectReason::InvalidQuantity));
+        }
+        None
     }
 
     /// Charges every open position for each rollover due at `now_nanos`.
@@ -3684,6 +3776,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -3836,6 +3929,7 @@ mod tests {
             by: TRADER_USER,
             account: SECOND,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -4399,6 +4493,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         assert!(
@@ -4502,6 +4597,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket: first,
+            qty: Qty::ZERO,
         })
         .unwrap();
 
@@ -4595,6 +4691,7 @@ mod tests {
                 by: TRADER_USER,
                 account: TRADER,
                 ticket,
+                qty: Qty::ZERO,
             })
             .unwrap();
             e.commit_at(e.last_sync).unwrap();
@@ -4733,6 +4830,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
 
@@ -4871,6 +4969,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket: long,
+            qty: Qty::ZERO,
         })
         .unwrap();
         e.commit_at(e.last_sync).unwrap();
@@ -4956,6 +5055,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         assert_eq!(
@@ -5237,6 +5337,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         let gained = e
@@ -5293,6 +5394,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         assert!(matches!(
@@ -5769,6 +5871,262 @@ mod tests {
         assert!(!into.1.amount.starts_with('-'), "{}", into.1.amount);
     }
 
+    // ── Partial closes ────────────────────────────────────────────────
+
+    /// Closes `qty` of `ticket`, or all of it when zero.
+    fn close(e: &mut Engine, ticket: OrderId, qty: Qty) -> Result<()> {
+        e.handle(Command::Close {
+            by: TRADER_USER,
+            account: TRADER,
+            ticket,
+            qty,
+        })
+    }
+
+    /// What is left of one parcel, or none if it has gone.
+    fn parcel(e: &Engine, ticket: OrderId) -> Option<Qty> {
+        let a = e.portfolio.account(TRADER)?;
+        a.open_instruments()
+            .flat_map(|i| a.lots(i).to_vec())
+            .find(|l| l.ticket == ticket)
+            .map(|l| l.qty)
+    }
+
+    #[test]
+    fn closing_part_of_a_hedged_position_leaves_the_rest_open() {
+        let s = Scratch::new("partial-hedged");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        close(&mut e, ticket, q("0.400")).unwrap();
+        assert_eq!(
+            parcel(&e, ticket),
+            Some(q("0.600")),
+            "the remainder keeps the ticket"
+        );
+        books_agree(&e);
+
+        // And the rest goes.
+        close(&mut e, ticket, Qty::ZERO).unwrap();
+        assert_eq!(parcel(&e, ticket), None);
+        books_agree(&e);
+    }
+
+    #[test]
+    fn closing_part_of_a_netting_position_sells_only_that_much() {
+        // On a netting account a close is an opposing order, so a partial
+        // close is a smaller one. The parcel shrinks the same way.
+        let s = Scratch::new("partial-netting");
+        let (mut e, _rx) = engine(&s.0);
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        close(&mut e, ticket, q("0.250")).unwrap();
+        let left = e.portfolio.account(TRADER).unwrap().lots(BTC);
+        assert_eq!(left.len(), 1, "not a second position");
+        assert_eq!(left[0].qty, q("0.750"));
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_partial_close_pays_out_its_share_and_leaves_the_rest_running() {
+        let s = Scratch::new("partial-profit");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        // Up a thousand a coin.
+        tick(&mut e, "81000.00", "81000.01");
+        let before = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        close(&mut e, ticket, q("0.400")).unwrap();
+        let after = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+
+        // 0.4 at 1,000 up, against the bid.
+        assert_eq!(
+            after.sub(before).unwrap().to_display_string(2).unwrap(),
+            "400.00"
+        );
+        // The rest is still in, so the profit on it is still floating
+        // rather than realised \u2014 which is the whole point of taking part
+        // off instead of all of it.
+        assert_eq!(parcel(&e, ticket), Some(q("0.600")));
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_close_off_the_step_grid_is_refused() {
+        // A size that is not a multiple of the step leaves a remainder
+        // that is not either, and that remainder is one no ordinary order
+        // can ever close — the trader would have to ask the desk to clear
+        // it by hand.
+        //
+        // The companion rule in `closable`, that what is left must be at
+        // least the minimum size, cannot fire for anything in today's
+        // catalogue: every instrument's step equals its minimum, so a
+        // multiple of the step is always at least the minimum. It is there
+        // for when the desk can set the two apart, which is what symbol
+        // administration will allow.
+        let s = Scratch::new("partial-remainder");
+        let (mut e, mut rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("0.002"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+        let _ = drain(&mut rx);
+
+        // BTC's minimum is 0.001 and its step is 0.001, so this would
+        // leave 0.0005 behind.
+        close(&mut e, ticket, q("0.0015")).unwrap();
+        e.commit_at(e.last_sync).unwrap();
+        let said = drain(&mut rx);
+        assert!(
+            said.iter().any(|m| matches!(
+                m,
+                ServerMessage::Rejected {
+                    reason: "invalidQuantity"
+                }
+            )),
+            "{said:?}"
+        );
+        assert_eq!(parcel(&e, ticket), Some(q("0.002")), "nothing moved");
+    }
+
+    #[test]
+    fn a_close_bigger_than_the_position_is_refused_rather_than_clamped() {
+        // The engine's fold clamps, because a replay has nobody to tell.
+        // A live trader does, and a silent clamp is how somebody closes a
+        // whole position believing they took half off.
+        let s = Scratch::new("partial-too-big");
+        let (mut e, mut rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("0.100"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+        let _ = drain(&mut rx);
+
+        close(&mut e, ticket, q("0.500")).unwrap();
+        e.commit_at(e.last_sync).unwrap();
+        assert!(drain(&mut rx).iter().any(|m| matches!(
+            m,
+            ServerMessage::Rejected {
+                reason: "invalidQuantity"
+            }
+        )));
+        assert_eq!(parcel(&e, ticket), Some(q("0.100")), "nothing moved");
+    }
+
+    #[test]
+    fn the_whole_parcel_always_closes_whatever_the_step_is() {
+        // A position that cannot be closed is not a position anybody
+        // should be left holding \u2014 including one opened before a step or
+        // a minimum changed under it.
+        let s = Scratch::new("partial-whole");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        place(&mut e, Side::Buy, q("0.001"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        close(&mut e, ticket, q("0.001")).unwrap();
+        assert_eq!(parcel(&e, ticket), None);
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_partial_close_survives_a_restart_as_the_size_it_was() {
+        let s = Scratch::new("partial-replay");
+        let ticket;
+        {
+            let (mut e, _rx) = engine(&s.0);
+            administer(&mut e, TRADER, AdminAction::SetHedging(true));
+            place(&mut e, Side::Buy, q("1"));
+            ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+            close(&mut e, ticket, q("0.400")).unwrap();
+            e.commit_at(e.last_sync).unwrap();
+            assert_eq!(parcel(&e, ticket), Some(q("0.600")));
+        }
+        // The fold has to honour the size on the event. Before this it
+        // threw the size away and closed the whole parcel, so a replay
+        // would have lost the remainder.
+        let (again, _rx) = engine(&s.0);
+        assert_eq!(parcel(&again, ticket), Some(q("0.600")));
+        books_agree(&again);
+    }
+
+    #[test]
+    fn closing_is_charged_on_a_hedging_account_as_it_is_on_a_netting_one() {
+        // It was not. The hedged path bypassed the fill, and
+        // `PositionClosed` had nowhere to put a charge \u2014 so whether a
+        // close cost anything depended on a setting that has nothing to do
+        // with pricing.
+        let s = Scratch::new("close-commission");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        priced(&mut e, "0", "2.50");
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        let before = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        close(&mut e, ticket, Qty::ZERO).unwrap();
+        let after = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+
+        // 2.50 of commission, and a penny of spread on one coin: the
+        // position opened at the ask and closed into the bid, as every
+        // round trip does.
+        assert_eq!(
+            before.sub(after).unwrap().to_display_string(2).unwrap(),
+            "2.51"
+        );
+        // And it is in the house book, not merely missing from the balance.
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_partial_close_is_charged_for_what_it_closed_and_no_more() {
+        let s = Scratch::new("close-commission-part");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        priced(&mut e, "0", "2.50");
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+
+        let before = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        close(&mut e, ticket, q("0.400")).unwrap();
+        let after = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        assert_eq!(
+            before.sub(after).unwrap().to_display_string(2).unwrap(),
+            "1.00"
+        );
+        books_agree(&e);
+    }
+
+    #[test]
+    fn a_stop_out_and_a_stop_loss_are_still_free() {
+        // The engine closed those, not the trader. Charging somebody for
+        // the platform liquidating them is adding insult to a loss.
+        let s = Scratch::new("close-commission-forced");
+        let (mut e, _rx) = engine(&s.0);
+        administer(&mut e, TRADER, AdminAction::SetHedging(true));
+        priced(&mut e, "0", "2.50");
+        place(&mut e, Side::Buy, q("1"));
+        let ticket = e.portfolio.account(TRADER).unwrap().lots(BTC)[0].ticket;
+        set_protection(&mut e, ticket, p("79000.00"), Price::ZERO).unwrap();
+
+        let before = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        // Through the stop.
+        tick(&mut e, "78900.00", "78900.01");
+        let after = money::Money::parse(&balance_of(&e, TRADER)).unwrap();
+        assert_eq!(parcel(&e, ticket), None, "the stop fired");
+
+        // Bought at 80,000.01 and stopped out at 78,900.00: 1,100.01 on
+        // one coin, and not a penny of commission on top of it.
+        assert_eq!(
+            before.sub(after).unwrap().to_display_string(2).unwrap(),
+            "1100.01"
+        );
+        books_agree(&e);
+    }
+
     fn books_agree(e: &Engine) {
         e.ledger
             .assert_balanced()
@@ -5830,6 +6188,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         books_agree(&e);
@@ -5869,6 +6228,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
         books_agree(&e);
@@ -6008,6 +6368,7 @@ mod tests {
             by: TRADER_USER,
             account: TRADER,
             ticket,
+            qty: Qty::ZERO,
         })
         .unwrap();
 
@@ -6330,6 +6691,7 @@ mod tests {
                 by: TRADER_USER,
                 account: TRADER,
                 ticket,
+                qty: Qty::ZERO,
             })
             .unwrap();
             e.commit_at(e.last_sync).unwrap();

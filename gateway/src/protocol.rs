@@ -374,9 +374,18 @@ pub enum ClientMessage {
         #[serde(default)]
         take_profit: String,
     },
-    /// Close an open position in full.
+    /// Close an open position, or part of one.
     #[serde(rename_all = "camelCase")]
-    ClosePosition { ticket: u64 },
+    ClosePosition {
+        ticket: u64,
+        /// How much to close, as a decimal string. Empty closes all of it.
+        ///
+        /// A string rather than a number, like every other size on this
+        /// wire: a lot size that went through a float would come back a
+        /// different lot size.
+        #[serde(default)]
+        qty: String,
+    },
     /// Withdraw a resting order.
     #[serde(rename_all = "camelCase")]
     CancelOrder { ticket: u64 },

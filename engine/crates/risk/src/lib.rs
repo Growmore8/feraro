@@ -821,8 +821,10 @@ impl Account {
         &mut self,
         instrument: InstrumentId,
         ticket: OrderId,
+        qty: Qty,
         price: Price,
         rate: Price,
+        commission: Money,
     ) -> Result<Realised, RiskError> {
         let lots = self
             .lots
@@ -832,13 +834,48 @@ impl Account {
             .iter()
             .position(|l| l.ticket == ticket)
             .ok_or(RiskError::UnknownOrder(ticket))?;
-        let lot = lots.remove(index);
-        let profit = money::pnl(lot.side, lot.open_price, price, lot.qty)?;
+        let lot = lots[index];
+
+        // Zero means the whole parcel, which is what every record written
+        // before partial closes existed meant by the size it carried.
+        //
+        // More than the parcel is clamped rather than refused, and only
+        // here: the gateway refuses it, with a reason the trader reads. But
+        // a *replay* has nobody to tell, and a journal that says "close
+        // 0.2" of a 0.1 parcel has to fold to something — and the only
+        // honest something is the parcel that is there.
+        let closing = if qty.is_zero() || qty >= lot.qty {
+            lot.qty
+        } else {
+            qty
+        };
+
+        let profit = money::pnl(lot.side, lot.open_price, price, closing)?;
+        let share = lot.swap_share(closing)?;
         let realised = Realised {
             profit: profit.convert_per(rate)?,
-            swap: lot.swap,
+            swap: share,
         };
+
+        if closing == lot.qty {
+            lots.remove(index);
+        } else {
+            // The remainder keeps the ticket, the side and the open price:
+            // it is the same position, smaller. A trader who takes half off
+            // is still in at the price they got, which is the whole reason
+            // to close part rather than all and re-open.
+            let rest = &mut lots[index];
+            rest.qty = rest.qty.sub(closing)?;
+            rest.swap = rest.swap.sub(share)?;
+        }
+
         self.balance = self.balance.add(realised.total()?)?;
+        // Deliberately not part of `Realised`: that is what the position
+        // made, and a charge for closing it is not profit. It comes off the
+        // balance beside the profit, exactly as it does on a fill.
+        if !commission.is_zero() {
+            self.balance = self.balance.sub(commission)?;
+        }
         Ok(realised)
     }
 
@@ -1402,7 +1439,8 @@ pub fn evaluate(
         // closes the same one. `index` found it; `close_lot` is what the
         // replay path runs too.
         let _ = index;
-        let realised = account.close_lot(instrument, lot.ticket, price, rate)?;
+        let realised =
+            account.close_lot(instrument, lot.ticket, lot.qty, price, rate, Money::ZERO)?;
 
         outcome.stopped_out.push(StopOut {
             account: account.id,
@@ -1881,7 +1919,7 @@ impl Portfolio {
                         commission: Money::ZERO,
                     })?
                 } else {
-                    a.close_lot(instrument, order, price, rate)?
+                    a.close_lot(instrument, order, qty, price, rate, Money::ZERO)?
                 };
                 applied.realised = Some((account, realised));
             }
@@ -1930,15 +1968,17 @@ impl Portfolio {
                 account,
                 instrument,
                 order,
+                qty,
                 price,
                 rate,
+                commission,
                 ..
             } => {
                 let realised = self
                     .accounts
                     .get_mut(&account)
                     .ok_or(RiskError::UnknownAccount(account))?
-                    .close_lot(instrument, order, price, rate)?;
+                    .close_lot(instrument, order, qty, price, rate, commission)?;
                 applied.realised = Some((account, realised));
             }
             Event::ProtectionSet {
@@ -1967,6 +2007,7 @@ impl Portfolio {
                 account,
                 instrument,
                 order,
+                qty,
                 price,
                 rate,
                 ..
@@ -1975,7 +2016,7 @@ impl Portfolio {
                     .accounts
                     .get_mut(&account)
                     .ok_or(RiskError::UnknownAccount(account))?
-                    .close_lot(instrument, order, price, rate)?;
+                    .close_lot(instrument, order, qty, price, rate, Money::ZERO)?;
                 applied.realised = Some((account, realised));
             }
             Event::MarginCallIssued { account, .. } => {
@@ -3053,6 +3094,211 @@ mod tests {
     }
 
     #[test]
+    fn closing_part_of_a_parcel_leaves_the_rest_at_the_price_it_opened_at() {
+        // The whole reason for this feature. Closing all of it and
+        // re-opening pays the spread twice and gives up the entry price,
+        // which is what a trader taking half off is trying not to do.
+        let (mut account, _market) = setup();
+        account
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1.00"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
+            .unwrap();
+        let opening = account.balance;
+
+        let realised = account
+            .close_lot(
+                BTC,
+                OrderId(1),
+                q("0.40"),
+                p("81000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
+            .unwrap();
+        // 0.40 at 1,000 up.
+        assert_eq!(
+            realised.total().unwrap().to_display_string(2).unwrap(),
+            "400.00"
+        );
+        assert_eq!(
+            account.balance.sub(opening).unwrap(),
+            realised.total().unwrap()
+        );
+
+        let left = account.lots(BTC);
+        assert_eq!(left.len(), 1, "it is still one position, not two");
+        assert_eq!(left[0].ticket, OrderId(1), "and it keeps its ticket");
+        assert_eq!(left[0].qty, q("0.60"));
+        assert_eq!(
+            left[0].open_price,
+            p("80000.00"),
+            "the remainder is still in at the price it got"
+        );
+
+        // And the rest closes for the rest of the profit.
+        let rest = account
+            .close_lot(
+                BTC,
+                OrderId(1),
+                q("0.60"),
+                p("81000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
+            .unwrap();
+        assert_eq!(
+            rest.total().unwrap().to_display_string(2).unwrap(),
+            "600.00"
+        );
+        assert!(account.lots(BTC).is_empty());
+        // The two parts add to what closing the whole lot would have made.
+        assert_eq!(
+            account
+                .balance
+                .sub(opening)
+                .unwrap()
+                .to_display_string(2)
+                .unwrap(),
+            "1000.00"
+        );
+    }
+
+    #[test]
+    fn a_partial_close_takes_its_share_of_the_financing_and_no_more() {
+        // Swap accrues on the position, so closing part of it realises part
+        // of the swap. Taking all of it would charge the remainder's
+        // financing twice: once now and again when it closes.
+        let (mut account, _market) = setup();
+        account
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1.00"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
+            .unwrap();
+        account.charge_swap(BTC, OrderId(1), m("-100.00")).unwrap();
+
+        let realised = account
+            .close_lot(
+                BTC,
+                OrderId(1),
+                q("0.25"),
+                p("80000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
+            .unwrap();
+        assert_eq!(realised.swap.to_display_string(2).unwrap(), "-25.00");
+        assert_eq!(
+            account.lots(BTC)[0].swap.to_display_string(2).unwrap(),
+            "-75.00",
+            "the remainder keeps the financing it has not realised"
+        );
+
+        // Closing the rest realises exactly the rest, so the night costs
+        // what it cost and not a penny more.
+        let rest = account
+            .close_lot(
+                BTC,
+                OrderId(1),
+                q("0.75"),
+                p("80000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
+            .unwrap();
+        assert_eq!(rest.swap.to_display_string(2).unwrap(), "-75.00");
+    }
+
+    #[test]
+    fn a_close_of_zero_or_more_than_is_there_takes_the_whole_parcel() {
+        // Zero is what every record written before partial closes existed
+        // meant by the size it carried, so those replay unchanged. More
+        // than the parcel is clamped here and refused at the gateway: a
+        // replay has nobody to tell, and the only honest reading of
+        // "close 2.0" of a 1.0 parcel is the parcel that is there.
+        for asked in [q("0"), q("5.00")] {
+            let (mut account, _market) = setup();
+            account
+                .fill(Fill {
+                    instrument: BTC,
+                    ticket: OrderId(1),
+                    side: Side::Buy,
+                    qty: q("1.00"),
+                    price: p("80000.00"),
+                    rate: Price::ONE,
+                    commission: Money::ZERO,
+                })
+                .unwrap();
+            account
+                .close_lot(
+                    BTC,
+                    OrderId(1),
+                    asked,
+                    p("81000.00"),
+                    Price::ONE,
+                    Money::ZERO,
+                )
+                .unwrap();
+            assert!(
+                account.lots(BTC).is_empty(),
+                "asking for {asked:?} left something behind"
+            );
+        }
+    }
+
+    #[test]
+    fn a_partially_closed_position_still_ties_up_margin_for_what_is_left() {
+        // The point of closing part of a position is usually to free
+        // margin. If the used margin did not fall, the trader would have
+        // given up the profit and got nothing for it.
+        let (mut account, market) = setup();
+        let policy = MarginPolicy::default();
+        account
+            .fill(Fill {
+                instrument: BTC,
+                ticket: OrderId(1),
+                side: Side::Buy,
+                qty: q("1.00"),
+                price: p("80000.00"),
+                rate: Price::ONE,
+                commission: Money::ZERO,
+            })
+            .unwrap();
+        let before = account.used_margin(&market, policy).unwrap();
+
+        account
+            .close_lot(
+                BTC,
+                OrderId(1),
+                q("0.50"),
+                p("80000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
+            .unwrap();
+        let after = account.used_margin(&market, policy).unwrap();
+
+        assert!(after < before, "{after:?} should be below {before:?}");
+        // Half the size, half the margin.
+        assert_eq!(
+            after.mul_ratio(2, 1).unwrap().to_display_string(2).unwrap(),
+            before.to_display_string(2).unwrap()
+        );
+    }
+
+    #[test]
     fn a_portfolio_rebuilds_itself_from_events() {
         let mut pf = Portfolio::new();
         let events = [
@@ -4018,7 +4264,14 @@ mod tests {
 
         // Close the *second* parcel, which is the one carrying the loss.
         let realised = account
-            .close_lot(BTC, OrderId(2), p("80000.00"), Price::ONE)
+            .close_lot(
+                BTC,
+                OrderId(2),
+                q("0.10"),
+                p("80000.00"),
+                Price::ONE,
+                Money::ZERO,
+            )
             .unwrap();
         assert_eq!(
             realised.total().unwrap().to_display_string(2).unwrap(),
@@ -4036,7 +4289,14 @@ mod tests {
         assert_eq!(left[0].open_price, p("80010.00"));
 
         assert_eq!(
-            account.close_lot(BTC, OrderId(2), p("80000.00"), Price::ONE),
+            account.close_lot(
+                BTC,
+                OrderId(2),
+                q("0.10"),
+                p("80000.00"),
+                Price::ONE,
+                Money::ZERO
+            ),
             Err(RiskError::UnknownOrder(OrderId(2))),
             "closing it twice is an error, not a second realisation"
         );

@@ -2904,10 +2904,15 @@ fn decode(by: UserId, account: AccountId, message: ClientMessage) -> Option<Comm
             stop_loss: optional_price(&stop_loss)?,
             take_profit: optional_price(&take_profit)?,
         }),
-        ClientMessage::ClosePosition { ticket } => Some(Command::Close {
+        ClientMessage::ClosePosition { ticket, qty } => Some(Command::Close {
             by,
             account,
             ticket: domain::OrderId(ticket),
+            // An unreadable size is zero, which means all of it. The other
+            // reading — drop the command — would leave a trader pressing
+            // Close and nothing happening, which is worse than closing the
+            // whole position they asked about.
+            qty: domain::Qty::parse(qty.trim()).unwrap_or(domain::Qty::ZERO),
         }),
         ClientMessage::CancelOrder { ticket } => Some(Command::CancelOrder {
             by,

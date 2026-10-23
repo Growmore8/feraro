@@ -750,3 +750,18 @@
   .wd-figures { gap: 14px; }
   .wal-tabs button { flex: 1; justify-content: center; padding: 9px 6px; }
 }
+
+
+/* Half and Close on a trade card.
+
+   Side by side, with Half plain and Close carrying the weight: closing a
+   position is the irreversible one, and the two should not look alike
+   under a thumb. */
+
+.mob-trade-acts { display: flex; gap: 5px; }
+
+.mob-half {
+  background: transparent !important;
+  border: 1px solid var(--mob-rule) !important;
+  color: var(--ink-2) !important;
+}

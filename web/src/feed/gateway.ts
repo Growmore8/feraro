@@ -1500,9 +1500,15 @@ export class GatewayClient {
     })
   }
 
-  /** Closes one position in full. */
-  close(ticket: number): void {
-    this.send({ type: 'closePosition', ticket })
+  /**
+   * Closes one position, or part of one.
+   *
+   * `qty` is a decimal string, and empty closes all of it. A string
+   * because every size on this wire is one: a lot size that went through
+   * a float would come back a different lot size.
+   */
+  close(ticket: number, qty = ''): void {
+    this.send({ type: 'closePosition', ticket, qty })
   }
 
   /** Withdraws a resting order. */

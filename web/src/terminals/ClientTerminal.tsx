@@ -21,6 +21,7 @@ import { MarketWatch, SOURCE_NAME } from '../components/MarketWatch'
 import type { PriceLine } from '../components/PriceChart'
 import { Sheet } from '../components/Sheet'
 import { Toasts } from '../components/Toasts'
+import { halfOf, stepOf } from '../lib/positions'
 import { Wallet } from '../components/Wallet'
 import type { WalletTab } from '../components/Wallet'
 import { Button, DataTable, Panel, Pill, Readout } from '../components/primitives'
@@ -50,6 +51,7 @@ import {
   showMarginLevel,
   showMoney,
   showPrice,
+  showQty,
   showQtyAsLots,
   showSigned,
   sum,
@@ -359,11 +361,32 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
     {
       key: 'close',
       header: '',
-      width: 62,
+      width: 108,
       render: (p) => (
-        <Button tone="danger" onClick={() => gw.closePosition(p.ticket)}>
-          Close
-        </Button>
+        <span className="row" style={{ gap: 4 }}>
+          {/*
+            Half, rather than a dialog asking how much. Taking half off is
+            what a trader does to a position that has run, and offering the
+            common case as one press beats offering every case as three.
+            The exact figure is still available by right-clicking.
+          */}
+          <Button
+            disabled={halfOf(p.qty, stepOf(gw.instruments, p.instrumentId)) === null}
+            onClick={() => {
+              const half = halfOf(p.qty, stepOf(gw.instruments, p.instrumentId))
+              // Never a fallback to closing the lot: a Half that sometimes
+              // closes everything is worse than one that is greyed out,
+              // because the surprise costs a position.
+              if (half === null) return
+              gw.closePosition(p.ticket, showQty(half))
+            }}
+          >
+            Half
+          </Button>
+          <Button tone="danger" onClick={() => gw.closePosition(p.ticket)}>
+            Close
+          </Button>
+        </span>
       ),
     },
   ]

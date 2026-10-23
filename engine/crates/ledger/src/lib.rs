@@ -365,15 +365,18 @@ pub fn realise_pnl(
     }
 }
 
-/// A closed position: trading profit and its financing, in one transaction.
+/// A closed position: trading profit, its financing, and what closing cost.
 ///
-/// Two legs on the house side rather than one, because a broker's trading
-/// revenue and its financing revenue are different numbers that different
-/// people are asked about. One transaction rather than two, because they are
-/// one event — and because a transaction id is the journal sequence that
-/// produced it, which there is only one of.
+/// Three legs on the house side rather than one, because a broker's trading
+/// revenue, its financing revenue and its commission are different numbers
+/// that different people are asked about. One transaction rather than three,
+/// because they are one event — and because a transaction id is the journal
+/// sequence that produced it, which there is only one of. Posting them
+/// separately is refused by the ledger, and rightly: that guard is what
+/// makes a replay safe.
 ///
 /// `swap` is signed as the trader sees it: negative is financing they paid.
+/// `commission` is unsigned — it always leaves the client.
 pub fn close_position(
     id: TxId,
     at: Timestamp,
@@ -381,8 +384,9 @@ pub fn close_position(
     currency: Currency,
     profit: Money,
     swap: Money,
+    commission: Money,
 ) -> Result<Transaction, LedgerError> {
-    let to_client = profit.add(swap)?;
+    let to_client = profit.add(swap)?.sub(commission)?;
     Ok(Transaction {
         id,
         at,
@@ -398,6 +402,10 @@ pub fn close_position(
             Posting::new(
                 LedgerAccount::house(AccountKind::Swap, currency),
                 swap.neg()?,
+            ),
+            Posting::new(
+                LedgerAccount::house(AccountKind::Commission, currency),
+                commission,
             ),
         ],
     })
@@ -698,6 +706,101 @@ mod tests {
 
     fn cash(currency: Currency) -> LedgerAccount {
         LedgerAccount::client(TRADER, AccountKind::ClientCash, currency)
+    }
+
+    #[test]
+    fn a_close_books_profit_financing_and_the_charge_in_one_transaction() {
+        // One journal record gets one transaction id, and the ledger
+        // refuses a second with the same one — so a close that charged
+        // commission separately could not be booked at all. Which is the
+        // right guard: it is what makes a replay safe.
+        let mut l = Ledger::new();
+        l.post(&deposit(
+            TxId(1),
+            Timestamp(0),
+            TRADER,
+            Currency::USD,
+            Money::parse("10000.00").unwrap(),
+        ))
+        .unwrap();
+
+        let tx = close_position(
+            TxId(2),
+            Timestamp(0),
+            TRADER,
+            Currency::USD,
+            Money::parse("400.00").unwrap(),
+            Money::parse("-20.00").unwrap(),
+            Money::parse("2.50").unwrap(),
+        )
+        .expect("balances");
+        l.post(&tx).unwrap();
+
+        // The trader is up the profit, less the financing they paid and
+        // less what closing cost: 400 − 20 − 2.50.
+        assert_eq!(
+            l.balance(&cash(Currency::USD)),
+            Money::parse("10377.50").unwrap()
+        );
+        // Three house books, because a broker's trading revenue, its
+        // financing revenue and its commission are three numbers three
+        // different people ask about.
+        assert_eq!(
+            l.balance(&LedgerAccount::house(
+                AccountKind::RealisedPnl,
+                Currency::USD
+            )),
+            Money::parse("-400.00").unwrap()
+        );
+        assert_eq!(
+            l.balance(&LedgerAccount::house(AccountKind::Swap, Currency::USD)),
+            Money::parse("20.00").unwrap()
+        );
+        assert_eq!(
+            l.balance(&LedgerAccount::house(
+                AccountKind::Commission,
+                Currency::USD
+            )),
+            Money::parse("2.50").unwrap()
+        );
+        l.assert_balanced().unwrap();
+    }
+
+    #[test]
+    fn a_close_with_no_charge_leaves_the_commission_book_alone() {
+        // A stop-out and a stop loss are free: the engine closed those, not
+        // the trader. A zero posting would be noise in a book somebody
+        // reads to answer what commission was earned.
+        let mut l = Ledger::new();
+        l.post(&deposit(
+            TxId(1),
+            Timestamp(0),
+            TRADER,
+            Currency::USD,
+            Money::parse("10000.00").unwrap(),
+        ))
+        .unwrap();
+        l.post(
+            &close_position(
+                TxId(2),
+                Timestamp(0),
+                TRADER,
+                Currency::USD,
+                Money::parse("100.00").unwrap(),
+                Money::ZERO,
+                Money::ZERO,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            l.balance(&LedgerAccount::house(
+                AccountKind::Commission,
+                Currency::USD
+            )),
+            Money::ZERO
+        );
+        l.assert_balanced().unwrap();
     }
 
     #[test]

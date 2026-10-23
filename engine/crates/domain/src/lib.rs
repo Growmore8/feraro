@@ -750,12 +750,33 @@ pub enum Event {
         instrument: InstrumentId,
         /// The parcel closed.
         order: OrderId,
-        /// Size closed — the whole parcel.
+        /// How much of the parcel closed.
+        ///
+        /// Less than the parcel is a partial close: the remainder keeps
+        /// this ticket, this side and the price it opened at, because it is
+        /// the same position, smaller. Zero means the whole of it, which is
+        /// what every record written before partial closes existed meant
+        /// by the size it carried — so those replay unchanged.
         qty: Qty,
         /// Price it closed at.
         price: Price,
         /// Conversion rate used, as on [`Event::OrderFilled`].
         rate: Price,
+        /// What closing it cost, in the account currency.
+        ///
+        /// # Why this is here and was not
+        ///
+        /// A broker that charges to open and not to close has half a
+        /// commission model. On a netting account the close is an opposing
+        /// order and the charge rides on [`Event::OrderFilled`]; on a
+        /// hedging account it is this event, which had nowhere to put it —
+        /// so a hedged close was free, and the house under-collected on
+        /// every one.
+        ///
+        /// Tag `0x4D` is the same event without it, and decodes as zero:
+        /// those closes really were free, and a replay must say so rather
+        /// than inventing a charge nobody made.
+        commission: Money,
         /// Who closed it: the holder, or an administrator acting for them.
         by: UserId,
     },
@@ -847,7 +868,11 @@ pub enum Event {
         instrument: InstrumentId,
         /// The parcel closed.
         order: OrderId,
-        /// Size closed — always the whole parcel.
+        /// Size closed — the whole of whatever is left of the parcel.
+        ///
+        /// Which may be less than it was opened at, if some of it has been
+        /// closed by hand since. Recorded rather than inferred, so replay
+        /// does not have to reconstruct what remained.
         qty: Qty,
         /// Price it closed at. A stop can slip past its level; that is what a
         /// stop is.
@@ -963,7 +988,7 @@ impl Event {
             Event::AccountModeSet { .. } => 0x0B,
             Event::AccountClassified { .. } => 0x0C,
             Event::AccountRenewed { .. } => 0x0D,
-            Event::PositionClosed { .. } => 0x4D,
+            Event::PositionClosed { .. } => 0x52,
             Event::TradeAdjusted { .. } => 0x4B,
             Event::PositionCorrected { .. } => 0x4C,
             Event::SwapCharged { .. } => 0x42,
@@ -1496,6 +1521,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             qty,
             price,
             rate,
+            commission,
             by,
         } => {
             w.u64(account.0);
@@ -1504,6 +1530,7 @@ pub fn encode(record: &Record) -> Vec<u8> {
             w.qty(qty);
             w.price(price);
             w.price(rate);
+            w.money(commission);
             w.u64(by.0);
         }
         Event::SessionChanged {
@@ -1819,6 +1846,17 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             hedging: r.u8()? != 0,
             by: UserId(r.u64()?),
         },
+        0x52 => Event::PositionClosed {
+            account: AccountId(r.u64()?),
+            instrument: InstrumentId(r.u32()?),
+            order: OrderId(r.u64()?),
+            qty: r.qty()?,
+            price: r.price()?,
+            rate: r.price()?,
+            commission: r.money()?,
+            by: UserId(r.u64()?),
+        },
+        // A close from before closing was charged. Zero, because it was.
         0x4D => Event::PositionClosed {
             account: AccountId(r.u64()?),
             instrument: InstrumentId(r.u32()?),
@@ -1826,6 +1864,7 @@ pub fn decode(bytes: &[u8]) -> Result<Record, CodecError> {
             qty: r.qty()?,
             price: r.price()?,
             rate: r.price()?,
+            commission: Money::ZERO,
             by: UserId(r.u64()?),
         },
         0x0A => Event::SessionChanged {
@@ -2002,6 +2041,7 @@ mod tests {
                 qty: Qty::parse("60000").unwrap(),
                 price: Price::parse("1.08500").unwrap(),
                 rate: Price::ONE,
+                commission: money::Money::parse("3.00").unwrap(),
                 by: UserId(2),
             },
             Event::SessionChanged {
@@ -2128,6 +2168,96 @@ mod tests {
         assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 1 + 8 + 8 + 8 + 8 + 16);
         assert_eq!(&bytes[..2], &WIRE_VERSION.to_le_bytes());
         assert_eq!(bytes[18], 0x4F);
+    }
+
+    #[test]
+    fn a_close_from_before_closing_was_charged_still_replays_as_free() {
+        // Tag 0x4D is this event with no commission on the end. Those
+        // closes really were free — the hedged path had nowhere to put a
+        // charge — so a replay must say so rather than inventing one
+        // nobody made and moving a balance that never moved.
+        let paid = Event::PositionClosed {
+            account: AccountId(1001),
+            instrument: InstrumentId(1),
+            order: OrderId(7),
+            qty: Qty::parse("60000").unwrap(),
+            price: Price::parse("1.08500").unwrap(),
+            rate: Price::ONE,
+            commission: money::Money::parse("3.00").unwrap(),
+            by: UserId(2),
+        };
+        let bytes = encode(&Record {
+            seq: Seq(9),
+            at: Timestamp(0),
+            event: paid,
+        });
+        assert_eq!(bytes[18], 0x52);
+        assert_eq!(decode(&bytes).expect("decodes").event, paid);
+
+        // The same record as the old tag wrote it: no commission, and the
+        // actor where the commission used to not be.
+        let mut legacy = bytes.clone();
+        legacy[18] = 0x4D;
+        // Strip the sixteen bytes of Money from in front of the actor.
+        let at = legacy.len() - 16 - 8;
+        legacy.drain(at..at + 16);
+        let Event::PositionClosed {
+            account,
+            instrument,
+            order,
+            qty,
+            price,
+            rate,
+            by,
+            ..
+        } = paid
+        else {
+            panic!("not a close");
+        };
+        assert_eq!(
+            decode(&legacy).expect("a legacy close decodes").event,
+            Event::PositionClosed {
+                account,
+                instrument,
+                order,
+                qty,
+                price,
+                rate,
+                commission: money::Money::ZERO,
+                by,
+            }
+        );
+    }
+
+    #[test]
+    fn a_partial_close_crosses_the_wire_as_the_size_it_closed() {
+        // The size was always on this event; it is the fold that used to
+        // ignore it. A record that says 0.4 has to come back saying 0.4,
+        // or a replay closes a different position than the one that closed.
+        let part = Event::PositionClosed {
+            account: AccountId(1001),
+            instrument: InstrumentId(1),
+            order: OrderId(7),
+            qty: Qty::parse("0.40").unwrap(),
+            price: Price::parse("1.08500").unwrap(),
+            rate: Price::ONE,
+            commission: money::Money::ZERO,
+            by: UserId(2),
+        };
+        let bytes = encode(&Record {
+            seq: Seq(10),
+            at: Timestamp(0),
+            event: part,
+        });
+        // Header, account, instrument, ticket, size, price, rate, the
+        // commission as a Money's sixteen bytes, and who closed it.
+        assert_eq!(bytes.len(), 2 + 8 + 8 + 1 + 8 + 4 + 8 + 8 + 8 + 8 + 16 + 8);
+        let back = decode(&bytes).expect("decodes").event;
+        assert_eq!(back, part);
+        let Event::PositionClosed { qty, .. } = back else {
+            panic!("not a close");
+        };
+        assert_eq!(qty, Qty::parse("0.40").unwrap());
     }
 
     #[test]
