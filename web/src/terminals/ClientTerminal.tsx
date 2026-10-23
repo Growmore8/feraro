@@ -19,7 +19,10 @@ import { ChartPane } from '../components/ChartPane'
 import { LevelCell } from '../components/LevelCell'
 import { MarketWatch, SOURCE_NAME } from '../components/MarketWatch'
 import type { PriceLine } from '../components/PriceChart'
+import { Sheet } from '../components/Sheet'
 import { Toasts } from '../components/Toasts'
+import { Wallet } from '../components/Wallet'
+import type { WalletTab } from '../components/Wallet'
 import { Button, DataTable, Panel, Pill, Readout } from '../components/primitives'
 import type { Column } from '../components/primitives'
 import type {
@@ -71,6 +74,14 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
   const [priceText, setPriceText] = useState('')
   const [ticketOpen, setTicketOpen] = useState(true)
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set())
+  /**
+   * Which side of the wallet is open, or null for closed.
+   *
+   * One sheet rather than two, because paying in and withdrawing are the
+   * same errand from the client's side — "my money" — and they are reached
+   * from two buttons that land on the right tab.
+   */
+  const [wallet, setWallet] = useState<WalletTab | null>(null)
 
   // Instruments come from the gateway when it is up; the static list is only a
   // fallback so the market watch is not empty while it is down.
@@ -116,6 +127,12 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
     () => sum(positions.map((p) => (p.profit + p.swap) as Money)),
     [positions],
   )
+  useEffect(() => {
+    if (wallet === null) return
+    gw.paymentMethods()
+    gw.payoutMethods()
+  }, [wallet, gw])
+
   const account = gw.account
 
   // Notional and margin arise in the instrument's quote currency, and the
@@ -428,8 +445,12 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
           <ToolButton label="Statement" />
         </ToolGroup>
         <ToolGroup name="Funds">
-          <ToolButton label="Deposit" tone="var(--profit)" />
-          <ToolButton label="Withdraw" />
+          <ToolButton
+            label="Deposit"
+            tone="var(--profit)"
+            onClick={() => setWallet('in')}
+          />
+          <ToolButton label="Withdraw" onClick={() => setWallet('out')} />
         </ToolGroup>
         <ToolGroup name="Workspace">
           <ToolButton label="Indicators" />
@@ -773,6 +794,42 @@ export function ClientTerminal({ gw }: ClientTerminalProps) {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {wallet !== null && account ? (
+        <Sheet
+          title="Your money"
+          note="Nothing here moves money by itself. A person at the desk checks every movement and the account changes then."
+          onClose={() => setWallet(null)}
+        >
+          <Wallet
+            methods={gw.methods}
+            payouts={gw.payouts}
+            mine={gw.myDeposits}
+            account={account.id}
+            live={account.live}
+            credit={account.credit}
+            freeMargin={account.freeMargin}
+            insurance={account.insurance}
+            start={wallet}
+            onDeposit={(method, amount, reference) => {
+              gw.requestDeposit(method, amount, reference)
+              window.setTimeout(() => gw.paymentMethods(), 250)
+            }}
+            onWithdraw={(payout, amount, note) => {
+              gw.requestWithdrawal(payout, amount, note)
+              window.setTimeout(() => gw.paymentMethods(), 250)
+            }}
+            onSavePayout={(m) => {
+              gw.savePayoutMethod(m)
+              window.setTimeout(() => gw.payoutMethods(), 200)
+            }}
+            onForgetPayout={(id) => {
+              gw.forgetPayoutMethod(id)
+              window.setTimeout(() => gw.payoutMethods(), 200)
+            }}
+          />
+        </Sheet>
       ) : null}
 
       <Toasts notices={notices} onDismiss={dismiss} />

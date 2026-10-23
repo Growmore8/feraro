@@ -15,6 +15,7 @@ import type {
   Kyc,
   GatewayEvent,
   GatewayState,
+  MoneyKind,
   OrderRequest,
   Rail,
   Role,
@@ -59,6 +60,22 @@ export interface GatewayView extends GatewayState {
   adminRemovePaymentMethod(id: number): void
   adminDepositRequests(): void
   adminSettleDeposit(id: number, credit: boolean, detail: string): void
+  adminSettle(id: number, approve: boolean, detail: string): void
+  adminRaise(kind: MoneyKind, account: number, amount: string, note: string): void
+  requestWithdrawal(payout: number, amount: string, note: string): void
+  payoutMethods(): void
+  savePayoutMethod(m: {
+    id: number | null
+    rail: Rail
+    label: string
+    address: string
+    note: string
+    preferred: boolean
+  }): void
+  forgetPayoutMethod(id: number): void
+  markups(): void
+  adminSetMarkup(instrument: number, markup: string): void
+  adminSetCommission(instrument: number, commission: string): void
   requestCandles(instrumentId: number, interval: string, limit: number): void
   requestStatement(limit?: number): void
   adminAction(account: number, kind: AdminActionKind, amount?: string): void
@@ -125,6 +142,8 @@ const EMPTY: GatewayState = {
   methods: [],
   myDeposits: [],
   deposits: [],
+  payouts: [],
+  pricing: [],
   adminResult: null,
 }
 
@@ -290,6 +309,58 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
     [],
   )
 
+  const adminSettle = useCallback((id: number, approve: boolean, detail: string) => {
+    clientRef.current?.adminSettle(id, approve, detail)
+  }, [])
+
+  const adminRaise = useCallback(
+    (kind: MoneyKind, account: number, amount: string, note: string) => {
+      clientRef.current?.adminRaise(kind, account, amount, note)
+    },
+    [],
+  )
+
+  const requestWithdrawal = useCallback(
+    (payout: number, amount: string, note: string) => {
+      clientRef.current?.requestWithdrawal(payout, amount, note)
+    },
+    [],
+  )
+
+  const payoutMethods = useCallback(() => {
+    clientRef.current?.payoutMethods()
+  }, [])
+
+  const savePayoutMethod = useCallback(
+    (m: {
+      id: number | null
+      rail: Rail
+      label: string
+      address: string
+      note: string
+      preferred: boolean
+    }) => {
+      clientRef.current?.savePayoutMethod(m)
+    },
+    [],
+  )
+
+  const forgetPayoutMethod = useCallback((id: number) => {
+    clientRef.current?.forgetPayoutMethod(id)
+  }, [])
+
+  const markups = useCallback(() => {
+    clientRef.current?.markups()
+  }, [])
+
+  const adminSetMarkup = useCallback((instrument: number, markup: string) => {
+    clientRef.current?.adminSetMarkup(instrument, markup)
+  }, [])
+
+  const adminSetCommission = useCallback((instrument: number, commission: string) => {
+    clientRef.current?.adminSetCommission(instrument, commission)
+  }, [])
+
   const adminSetKyc = useCallback((user: number, kyc: Kyc) => {
     clientRef.current?.adminSetKyc(user, kyc)
   }, [])
@@ -363,6 +434,15 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminRemovePaymentMethod,
       adminDepositRequests,
       adminSettleDeposit,
+      adminSettle,
+      adminRaise,
+      requestWithdrawal,
+      payoutMethods,
+      savePayoutMethod,
+      forgetPayoutMethod,
+      markups,
+      adminSetMarkup,
+      adminSetCommission,
       requestCandles,
       requestStatement,
       adminAction,
@@ -397,6 +477,15 @@ export function useGateway(url: string = GATEWAY_URL): GatewayView {
       adminRemovePaymentMethod,
       adminDepositRequests,
       adminSettleDeposit,
+      adminSettle,
+      adminRaise,
+      requestWithdrawal,
+      payoutMethods,
+      savePayoutMethod,
+      forgetPayoutMethod,
+      markups,
+      adminSetMarkup,
+      adminSetCommission,
       requestCandles,
       requestStatement,
       adminAction,

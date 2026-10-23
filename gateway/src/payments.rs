@@ -233,6 +233,21 @@ impl Stage {
             Stage::Refused => "refused",
         }
     }
+
+    /// What to call this stage in a sentence to a person.
+    ///
+    /// [`Stage::as_str`] is the wire name and cannot change without
+    /// changing every screen that reads it. But "credited" is only true of
+    /// a deposit: a withdrawal that went through was *paid*, and insurance
+    /// that went through was *set aside*. One word covers all of them
+    /// without being wrong about any.
+    pub const fn said(self) -> &'static str {
+        match self {
+            Stage::Pending => "still waiting",
+            Stage::Credited => "approved",
+            Stage::Refused => "refused",
+        }
+    }
 }
 
 /// A client's claim that they have paid.
@@ -600,7 +615,7 @@ impl Payments {
             bail!("no deposit request {id}");
         };
         if found.stage != Stage::Pending {
-            bail!("that request was already {}", found.stage.as_str());
+            bail!("that request was already {}", found.stage.said());
         }
         found.stage = if credited {
             Stage::Credited
@@ -1008,6 +1023,50 @@ mod tests {
         payout(&mut p, 9, "Theirs");
         assert_eq!(p.payouts_of(UserId(2)).len(), 1);
         assert_eq!(p.payouts_of(UserId(2))[0].label, "Mine");
+    }
+
+    #[test]
+    fn a_request_leaves_pending_exactly_once() {
+        let s = Scratch::new("settle-once");
+        let mut p = Payments::load(&s.file()).unwrap();
+        // A withdrawal has to name where it goes, so it gets somewhere to
+        // go first. That refusal has its own test.
+        let payout = p
+            .put_payout(Saving {
+                id: None,
+                user: UserId(2),
+                rail: Rail::Bank,
+                label: "HDFC",
+                address: "50100123456789",
+                note: "",
+                preferred: true,
+            })
+            .unwrap();
+        let id = p
+            .raise(Asked {
+                kind: Kind::Withdrawal,
+                account: AccountId(1001),
+                user: UserId(2),
+                method: payout,
+                amount: "400.00",
+                reference: "",
+                at: 0,
+            })
+            .unwrap();
+
+        assert!(p.settle(id, UserId(1), true, "sent").is_ok());
+
+        // The second attempt is the one that pays a client twice. It is
+        // refused, and the words hold for a withdrawal as much as for a
+        // deposit: nothing here was ever "credited".
+        let again = p.settle(id, UserId(1), true, "sent").unwrap_err();
+        let said = again.to_string();
+        assert!(said.contains("already approved"), "{said}");
+        assert!(!said.contains("credited"), "{said}");
+
+        // Refusing it afterwards is refused too, for the same reason: the
+        // money has gone, and marking it refused would hide that.
+        assert!(p.settle(id, UserId(1), false, "no").is_err());
     }
 
     #[test]

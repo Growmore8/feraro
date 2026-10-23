@@ -41,6 +41,13 @@ replay. That is the cost of this architecture and it is paid deliberately.
       cannot reach it. Not bonus: it supports no margin. *(engine)*
 - [x] **Cubex's UI language** — cards, instrument marks, price pills,
       segmented controls, in pearl rather than black.
+- [x] **Screens for all of it** — the three features above were wire-only.
+      Now: one **Requests** queue on the desk for every kind of movement,
+      with per-kind counts and a confirmation that names what the operator
+      must have done; a **Pricing** panel for markup and commission beside
+      the spread they produce; the client's **wallet** — pay in, withdraw,
+      and the payout book — on the desktop and on the phone; and insurance
+      raised from an account's own menu into the same queue.
 
 ## Next, in order
 

@@ -428,6 +428,11 @@ pub struct AdminAccountDto {
     pub leverage: u32,
     pub balance: String,
     pub credit: String,
+    /// The client's own money, set aside out of the market's reach.
+    ///
+    /// Shown in the book because an operator deciding an insurance request
+    /// needs to see what is already put by.
+    pub insurance: String,
     pub equity: String,
     pub used_margin: String,
     pub margin_level_bp: Option<i64>,

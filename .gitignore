@@ -46,6 +46,10 @@ caddy-config/
 /image*.png
 /*.png
 
+# Output from a gateway started by hand while testing.
+gateway/gw.log
+gateway/gw.err
+
 .vscode/
 .idea/
 *.swp

@@ -69,6 +69,8 @@ import { DealTicket } from '../components/DealTicket'
 import type { Resting } from '../components/DealTicket'
 import { LevelCell } from '../components/LevelCell'
 import { MarketWatch } from '../components/MarketWatch'
+import { PricingSheet } from '../components/PricingSheet'
+import { RequestQueue } from '../components/RequestQueue'
 import { Sheet } from '../components/Sheet'
 import { useChimes } from '../feed/useChimes'
 import { isMuted, play, setMuted, wake } from '../lib/chime'
@@ -83,6 +85,7 @@ import type {
   AuditLine,
   GatewayPosition,
   Kyc,
+  MoneyKind,
 } from '../feed/gateway'
 import type { FeedQuote, Interval } from '../feed/types'
 import type { GatewayView } from '../feed/useGateway'
@@ -105,7 +108,7 @@ import './ManagerTerminal.css'
 /** How often the book refreshes itself while the screen is open. */
 const REFRESH_MS = 4_000
 
-type Tab = 'Trade' | 'History' | 'Net Trade' | 'Deposits' | 'Audit'
+type Tab = 'Trade' | 'History' | 'Net Trade' | 'Requests' | 'Audit'
 
 /**
  * Why money moved, per kind of movement.
@@ -159,8 +162,8 @@ const PANES: readonly (readonly [keyof PanesOpen, string])[] = [
  *  platform's: a manager reading either would be reading other managers'
  *  clients. */
 const TABS: Readonly<Record<'admin' | 'manager', readonly Tab[]>> = {
-  admin: ['Trade', 'History', 'Net Trade', 'Deposits', 'Audit'],
-  manager: ['Trade', 'History', 'Net Trade', 'Deposits'],
+  admin: ['Trade', 'History', 'Net Trade', 'Requests', 'Audit'],
+  manager: ['Trade', 'History', 'Net Trade', 'Requests'],
 }
 
 export interface ManagerTerminalProps {
@@ -241,7 +244,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   }, [gw.activity])
 
   /** A read-only panel, when one has been opened from a menu. */
-  const [sheet, setSheet] = useState<'books' | 'payments' | null>(null)
+  const [sheet, setSheet] = useState<'books' | 'payments' | 'pricing' | null>(null)
 
   /**
    * Tickets ticked in the blotter.
@@ -318,7 +321,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
       gw.adminOverview()
       if (tab === 'Audit') gw.adminAudit()
       if (tab === 'History') gw.requestStatement()
-      if (tab === 'Deposits') gw.adminDepositRequests()
+      if (tab === 'Requests') gw.adminDepositRequests()
       // Not for a tab — for the sound. The desk wants to hear a client
       // arrive whichever screen it is looking at.
       if (!quiet) gw.adminActivity()
@@ -336,7 +339,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
   useEffect(() => {
     if (tab === 'Audit') gw.adminAudit()
     if (tab === 'History') gw.requestStatement()
-    if (tab === 'Deposits') gw.adminDepositRequests()
+    if (tab === 'Requests') gw.adminDepositRequests()
   }, [tab, gw, selected])
 
   const account = useMemo(
@@ -520,7 +523,7 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         return String(gw.statement.length)
       case 'Net Trade':
         return String(netTrade.length)
-      case 'Deposits':
+      case 'Requests':
         return String(gw.deposits.filter((d) => d.stage === 'pending').length)
       default:
         return null
@@ -641,6 +644,59 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
         }),
     })
 
+    /**
+     * A movement the desk starts, which still has to be approved.
+     *
+     * Unlike `money` above it does not apply anything: it raises a request
+     * in the same queue a client's deposit lands in. That is deliberate.
+     * Bonus and insurance are the two movements an operator is most likely
+     * to get wrong, and a queue means a second pair of eyes and one place
+     * where every movement on this account can be read in order.
+     */
+    const queued = (
+      kind: MoneyKind,
+      label: string,
+      icon: string,
+      note: string,
+    ): MenuLine => ({
+      label,
+      icon,
+      onPick: () =>
+        setAsk({
+          title: label,
+          subject: `${a.id} \u2014 ${who}`,
+          icon,
+          note,
+          fields: [
+            {
+              key: 'amount',
+              label: 'Amount',
+              placeholder: '0.00',
+              mode: 'decimal' as const,
+              beside: true,
+            },
+            {
+              key: 'note',
+              label: 'Note',
+              beside: true,
+              required: false,
+              mode: 'text' as const,
+            },
+          ],
+          submitLabel: 'Queue it',
+          run: ({ amount, note: why }) => {
+            gw.adminRaise(kind, a.id, (amount ?? '').trim(), (why ?? '').trim())
+            // It is in the queue, not applied. Showing the queue next is
+            // the honest thing: the operator sees that nothing moved yet.
+            window.setTimeout(() => {
+              gw.adminDepositRequests()
+              gw.adminOverview()
+            }, 200)
+            setTab('Requests')
+          },
+        }),
+    })
+
     const plain = (kind: AdminActionKind, label: string, icon?: string): MenuLine => ({
       label,
       ...(icon ? { icon } : {}),
@@ -672,6 +728,19 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           money('deposit', 'Deposit', '\u2193', `Pays money into ${a.id} \u2014 ${who}.`),
           money('withdraw', 'Withdraw', '\u2191', `Takes money out of ${a.id} \u2014 ${who}. Bonus cannot be withdrawn.`),
           money('credit', 'Set bonus', '\u25c8', `Sets the non-withdrawable bonus on ${a.id} to this figure, replacing what is there.`),
+          '-',
+          queued(
+            'insuranceIn',
+            'Set aside\u2026',
+            '\u25a0',
+            `Moves ${who}'s own money out of the market's reach. It stops supporting margin, so their free margin falls by it. Goes in the queue to be approved.`,
+          ),
+          queued(
+            'insuranceOut',
+            'Release\u2026',
+            '\u25a1',
+            `Puts money that was set aside back into ${a.id}'s balance, where it supports margin again. Goes in the queue to be approved.`,
+          ),
         ],
       })
     }
@@ -1149,7 +1218,15 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           },
         },
         {
-          label: 'Trial balance\u2026',
+          label: 'Pricing…',
+          hint: 'markup and commission',
+          onPick: () => {
+            gw.markups()
+            setSheet('pricing')
+          },
+        },
+        {
+          label: 'Trial balance…',
           onPick: () => {
             gw.adminBooks()
             setSheet('books')
@@ -2038,110 +2115,16 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
               </div>
             ) : null}
 
-            {tab === 'Deposits' ? (
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 54 }}>#</th>
-                      <th style={{ width: 150 }}>When</th>
-                      <th style={{ width: 70 }}>Account</th>
-                      <th>Client</th>
-                      <th style={{ width: 140 }}>Paid to</th>
-                      <th className="num" style={{ width: 120 }}>
-                        They say
-                      </th>
-                      <th style={{ width: 180 }}>Reference</th>
-                      <th style={{ width: 96 }}>State</th>
-                      <th style={{ width: 170 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gw.deposits.map((d) => (
-                      <tr key={d.id}>
-                        <td className="mono dim">{d.id}</td>
-                        <td className="mono dim">{when(d.at)}</td>
-                        <td className="mono">{d.account}</td>
-                        <td>{d.login ?? <span className="dim">unknown</span>}</td>
-                        <td>
-                          <span className="dim">{RAIL_WORD[d.rail]}</span> {d.methodLabel}
-                        </td>
-                        {/* A claim, not an agreed figure, so it is never
-                            formatted as though the platform had checked it. */}
-                        <td className="num mono">{d.amount}</td>
-                        <td className="mono dim">{d.reference || '\u2014'}</td>
-                        <td>
-                          {d.stage === 'pending' ? (
-                            <Pill tone="sell">waiting</Pill>
-                          ) : d.stage === 'credited' ? (
-                            <Pill tone="ok">credited</Pill>
-                          ) : (
-                            <span className="dim">refused</span>
-                          )}
-                        </td>
-                        <td>
-                          {d.stage !== 'pending' ? (
-                            <span className="dim">{d.detail}</span>
-                          ) : (
-                            <div className="row" style={{ gap: 4 }}>
-                              <button
-                                type="button"
-                                className="mgr-go"
-                                disabled={!isAdmin}
-                                title={
-                                  isAdmin
-                                    ? 'Credit the account with what they say they sent'
-                                    : 'Confirming money arrived is an administrator\u2019s'
-                                }
-                                onClick={() => {
-                                  if (
-                                    !window.confirm(
-                                      `Have you SEEN ${d.amount} arrive from ${d.login ?? 'this client'}? This credits account ${d.account}.`,
-                                    )
-                                  )
-                                    return
-                                  gw.adminSettleDeposit(d.id, true, 'seen by the desk')
-                                  window.setTimeout(() => {
-                                    gw.adminDepositRequests()
-                                    gw.adminOverview()
-                                  }, 250)
-                                }}
-                              >
-                                Money arrived
-                              </button>
-                              <button
-                                type="button"
-                                className="mgr-mini bad"
-                                onClick={() => {
-                                  const why = window.prompt(
-                                    'Why is this refused? The client is told.',
-                                    'nothing received',
-                                  )
-                                  if (why === null) return
-                                  gw.adminSettleDeposit(d.id, false, why)
-                                  window.setTimeout(() => gw.adminDepositRequests(), 250)
-                                }}
-                              >
-                                Not seen
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {gw.deposits.length === 0 ? (
-                  <p className="table-empty dim">No deposit claims.</p>
-                ) : (
-                  <p className="mgr-note">
-                    Nothing here has moved any money. A claim is a client saying they
-                    paid; <strong>check your bank or wallet first</strong>, and only then
-                    confirm — the credit is an ordinary journaled deposit with your name
-                    on it.
-                  </p>
-                )}
-              </div>
+            {tab === 'Requests' ? (
+              <RequestQueue
+                requests={gw.deposits}
+                mayDecide={isAdmin}
+                onSettle={(id, approve, detail) => gw.adminSettle(id, approve, detail)}
+                onChanged={() => {
+                  gw.adminDepositRequests()
+                  gw.adminOverview()
+                }}
+              />
             ) : null}
 
             {tab === 'Audit' ? (
@@ -2214,6 +2197,22 @@ export function ManagerTerminal({ gw }: ManagerTerminalProps) {
           onClose={() => setSheet(null)}
         >
           <PaymentMethods gw={gw} />
+        </Sheet>
+      ) : null}
+
+      {sheet === 'pricing' ? (
+        <Sheet
+          title="Pricing"
+          note="What the house earns, per instrument. Markup widens the spread and is applied before a client is quoted, so they deal at the price they saw. Commission leaves the balance on opening and again on closing."
+          onClose={() => setSheet(null)}
+        >
+          <PricingSheet
+            pricing={gw.pricing}
+            mayEdit={isAdmin}
+            onSetMarkup={(i, v) => gw.adminSetMarkup(i, v)}
+            onSetCommission={(i, v) => gw.adminSetCommission(i, v)}
+            onChanged={() => gw.markups()}
+          />
         </Sheet>
       ) : null}
 

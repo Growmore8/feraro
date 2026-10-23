@@ -2717,6 +2717,7 @@ impl Engine {
                 leverage: a.leverage,
                 balance: money_str(a.balance),
                 credit: money_str(a.credit),
+                insurance: money_str(a.insurance),
                 // An unquoted market is not a reason to show no book: the
                 // balance is known even when equity is not.
                 equity: money_str(a.equity(market).unwrap_or(a.balance)),

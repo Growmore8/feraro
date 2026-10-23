@@ -486,6 +486,205 @@ describe('the books', () => {
   })
 })
 
+
+describe('the money queue', () => {
+  it('reads every kind of movement, and which pot each touches', () => {
+    const frame = JSON.stringify({
+      type: 'depositRequests',
+      requests: [
+        {
+          id: 7,
+          kind: 'withdrawal',
+          pot: 'balance',
+          account: 1001,
+          user: 2,
+          login: 'trader@example.com',
+          method: 3,
+          methodLabel: 'HDFC savings',
+          rail: 'bank',
+          amount: '400.00',
+          reference: '',
+          at: 1_700_000_000_000,
+          stage: 'pending',
+          settledBy: null,
+          detail: '',
+        },
+        {
+          id: 8,
+          kind: 'insuranceIn',
+          pot: 'insurance',
+          account: 1001,
+          user: 2,
+          login: 'trader@example.com',
+          method: 0,
+          methodLabel: '',
+          rail: 'bank',
+          amount: '1000.00',
+          reference: '',
+          at: 1_700_000_100_000,
+          stage: 'credited',
+          settledBy: 1,
+          detail: 'checked at the desk',
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.deposits!.map((r) => r.kind)).toEqual(['withdrawal', 'insuranceIn'])
+    expect(patch.deposits!.map((r) => r.pot)).toEqual(['balance', 'insurance'])
+    // The amount stays the string the client claimed. Formatting it would
+    // dress a claim up as an agreed figure.
+    expect(patch.deposits![0]!.amount).toBe('400.00')
+  })
+
+  it('calls an old frame without a kind a deposit, rather than reading NaN', () => {
+    // A gateway from before the queue held more than deposits. The screen
+    // must still show the row: the money is real either way.
+    const frame = JSON.stringify({
+      type: 'depositRequests',
+      requests: [
+        {
+          id: 1,
+          account: 1001,
+          user: 2,
+          login: null,
+          method: 1,
+          methodLabel: 'USDT TRC20',
+          rail: 'crypto',
+          amount: '100.00',
+          reference: 'abc',
+          at: 1_700_000_000_000,
+          stage: 'pending',
+          settledBy: null,
+          detail: '',
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.deposits![0]!.kind).toBe('deposit')
+    expect(patch.deposits![0]!.pot).toBe('balance')
+  })
+
+  it('reads where a client wants to be paid, and which one is the usual', () => {
+    const frame = JSON.stringify({
+      type: 'payoutMethods',
+      payouts: [
+        {
+          id: 1,
+          rail: 'crypto',
+          label: 'Ledger',
+          address: 'TR7NHq...',
+          note: 'TRC20',
+          preferred: true,
+        },
+        {
+          id: 2,
+          rail: 'upi',
+          label: 'GPay',
+          address: 'someone@okaxis',
+          note: '',
+          preferred: false,
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.payouts!.find((p) => p.preferred)!.label).toBe('Ledger')
+    // In full. A truncated address is one nobody can check.
+    expect(patch.payouts![0]!.address).toBe('TR7NHq...')
+    expect(patch.payouts![1]!.rail).toBe('upi')
+  })
+})
+
+describe('pricing', () => {
+  it('reads the markup, the commission and the spread they produce', () => {
+    const frame = JSON.stringify({
+      type: 'markups',
+      markups: [
+        {
+          instrument: 1,
+          symbol: 'BTCUSD',
+          markup: '0.50000',
+          commission: '2.00',
+          spread: '1.70',
+        },
+        {
+          instrument: 30,
+          symbol: 'USDJPY',
+          markup: '0',
+          commission: '0',
+          spread: null,
+        },
+      ],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    // Decimal strings, never numbers: a markup that went through a float
+    // would come back a different markup.
+    expect(patch.pricing![0]!.markup).toBe('0.50000')
+    expect(patch.pricing![0]!.spread).toBe('1.70')
+    // An unquoted instrument has no spread, and null is not '0': zero would
+    // read as a market with no spread at all.
+    expect(patch.pricing![1]!.spread).toBeNull()
+  })
+})
+
+describe('insurance on an account', () => {
+  it('is read apart from the bonus, because it is not the same money', () => {
+    const frame = JSON.stringify({
+      type: 'snapshot',
+      instruments: [],
+      account: {
+        id: 1001,
+        currency: 'USD',
+        leverage: 100,
+        balance: '5000.000000000',
+        credit: '250.000000000',
+        insurance: '1000.000000000',
+        equity: '5250.000000000',
+        usedMargin: '0.000000000',
+        freeMargin: '4250.000000000',
+        marginLevelBp: null,
+        hedging: false,
+        live: true,
+        demoExpiresAt: null,
+      },
+      positions: [],
+      pending: [],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(showMoney(patch.account!.insurance)).toBe('1,000.00')
+    expect(showMoney(patch.account!.credit)).toBe('250.00')
+    // Free margin is below the equity by the amount set aside: insurance
+    // supports no margin, which is the whole difference from a bonus.
+    expect(patch.account!.equity - patch.account!.freeMargin).toBe(
+      patch.account!.insurance,
+    )
+  })
+
+  it('reads an older account frame as nothing set aside', () => {
+    const frame = JSON.stringify({
+      type: 'snapshot',
+      instruments: [],
+      account: {
+        id: 1001,
+        currency: 'USD',
+        leverage: 100,
+        balance: '100.000000000',
+        credit: '0.000000000',
+        equity: '100.000000000',
+        usedMargin: '0.000000000',
+        freeMargin: '100.000000000',
+        marginLevelBp: null,
+        hedging: false,
+        live: false,
+        demoExpiresAt: null,
+      },
+      positions: [],
+      pending: [],
+    })
+    const { patch } = handleFrame(frame, 0, NO_QUOTES)
+    expect(patch.account!.insurance).toBe(0n)
+  })
+})
+
 describe('protection', () => {
   it('reports a stop loss and a take profit as different things', () => {
     const stop = handleFrame(

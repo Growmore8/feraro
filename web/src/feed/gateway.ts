@@ -63,6 +63,12 @@ export interface GatewayAccount {
   readonly leverage: number
   readonly balance: Money
   readonly credit: Money
+  /**
+   * The client's own money, set aside where the market cannot reach it.
+   *
+   * Not the bonus: it supports no margin, so free margin falls by it.
+   */
+  readonly insurance: Money
   readonly equity: Money
   readonly usedMargin: Money
   readonly freeMargin: Money
@@ -156,6 +162,8 @@ export interface AdminAccount {
   readonly leverage: number
   readonly balance: Money
   readonly credit: Money
+  /** Set aside out of the market's reach, and not margin. */
+  readonly insurance: Money
   readonly equity: Money
   readonly usedMargin: Money
   readonly marginLevelBp: number | null
@@ -216,8 +224,72 @@ export interface PaymentMethod {
   readonly enabled: boolean
 }
 
-/** Where a deposit claim has got to. */
+/** Where a request has got to. */
 export type Stage = 'pending' | 'credited' | 'refused'
+
+/**
+ * What is being asked for.
+ *
+ * Every way money moves except a trade, in one queue. The client may raise
+ * the first two; the rest are the house's to grant.
+ */
+export type MoneyKind =
+  | 'deposit'
+  | 'withdrawal'
+  | 'bonusIn'
+  | 'bonusOut'
+  | 'insuranceIn'
+  | 'insuranceOut'
+
+export const MONEY_KINDS: readonly MoneyKind[] = [
+  'deposit',
+  'withdrawal',
+  'bonusIn',
+  'bonusOut',
+  'insuranceIn',
+  'insuranceOut',
+]
+
+/** What each is called on screen. */
+export const KIND_WORD: Readonly<Record<MoneyKind, string>> = {
+  deposit: 'Deposit',
+  withdrawal: 'Withdrawal',
+  bonusIn: 'Bonus in',
+  bonusOut: 'Bonus out',
+  insuranceIn: 'Insurance in',
+  insuranceOut: 'Insurance out',
+}
+
+export const asMoneyKind = (name: string): MoneyKind =>
+  (MONEY_KINDS as readonly string[]).includes(name) ? (name as MoneyKind) : 'deposit'
+
+/** Where one client wants their money sent. */
+export interface PayoutMethod {
+  readonly id: number
+  readonly rail: Rail
+  readonly label: string
+  readonly address: string
+  readonly note: string
+  /** The one used unless another is chosen. */
+  readonly preferred: boolean
+}
+
+/** What the house charges on one instrument. */
+export interface Pricing {
+  readonly instrument: number
+  readonly symbol: string
+  /** Added to each side, so the spread widens by twice it. */
+  readonly markup: string
+  /** Charged per unit when a position opens and when it closes. */
+  readonly commission: string
+  /**
+   * The widened spread as it stands, in the instrument's own points.
+   *
+   * Null until a price has arrived: a spread is a fact about two live
+   * prices, not about the markup on its own.
+   */
+  readonly spread: string | null
+}
 
 /**
  * A client's claim that they have paid.
@@ -228,6 +300,10 @@ export type Stage = 'pending' | 'credited' | 'refused'
  */
 export interface DepositRequest {
   readonly id: number
+  /** What is being asked for. */
+  readonly kind: MoneyKind
+  /** Which pot it moves: balance, bonus or insurance. */
+  readonly pot: string
   readonly account: number
   readonly user: number
   readonly login: string | null
@@ -356,8 +432,12 @@ export interface GatewayState {
   readonly methods: readonly PaymentMethod[]
   /** This client's own deposit claims, newest first. */
   readonly myDeposits: readonly DepositRequest[]
-  /** The desk's queue of claims to check. */
+  /** The desk's queue of requests to decide. */
   readonly deposits: readonly DepositRequest[]
+  /** Where this client's money may be sent. */
+  readonly payouts: readonly PayoutMethod[]
+  /** What the house charges, per instrument. */
+  readonly pricing: readonly Pricing[]
   /** Who signed in, newest first. */
   readonly activity: readonly ActivityLine[]
   /**
@@ -484,6 +564,7 @@ function parseAdminAccount(raw: Record<string, unknown>): AdminAccount {
     leverage: Number(raw['leverage']),
     balance: money(String(raw['balance'])),
     credit: money(String(raw['credit'])),
+    insurance: money(String(raw['insurance'] ?? '0')),
     equity: money(String(raw['equity'])),
     usedMargin: money(String(raw['usedMargin'])),
     marginLevelBp: level === null || level === undefined ? null : Number(level),
@@ -516,6 +597,7 @@ function parseAccount(raw: Record<string, unknown>): GatewayAccount {
     leverage: Number(raw['leverage']),
     balance: money(String(raw['balance'])),
     credit: money(String(raw['credit'])),
+    insurance: money(String(raw['insurance'] ?? '0')),
     equity: money(String(raw['equity'])),
     usedMargin: money(String(raw['usedMargin'])),
     freeMargin: money(String(raw['freeMargin'])),
@@ -694,6 +776,33 @@ export function handleFrame(
         ? (frame['requests'] as Record<string, unknown>[]).map(parseRequest)
         : []
       return { patch: { deposits: requests } }
+    }
+
+    case 'payoutMethods': {
+      const payouts = Array.isArray(frame['payouts'])
+        ? (frame['payouts'] as Record<string, unknown>[]).map((p) => ({
+            id: Number(p['id']),
+            rail: asRail(String(p['rail'] ?? 'bank')),
+            label: String(p['label'] ?? ''),
+            address: String(p['address'] ?? ''),
+            note: String(p['note'] ?? ''),
+            preferred: p['preferred'] === true,
+          }))
+        : []
+      return { patch: { payouts } }
+    }
+
+    case 'markups': {
+      const pricing = Array.isArray(frame['markups'])
+        ? (frame['markups'] as Record<string, unknown>[]).map((m) => ({
+            instrument: Number(m['instrument']),
+            symbol: String(m['symbol'] ?? ''),
+            markup: String(m['markup'] ?? '0'),
+            commission: String(m['commission'] ?? '0'),
+            spread: m['spread'] == null ? null : String(m['spread']),
+          }))
+        : []
+      return { patch: { pricing } }
     }
 
     case 'adminBook': {
@@ -1027,6 +1136,8 @@ const parseMethod = (m: Record<string, unknown>): PaymentMethod => ({
 
 const parseRequest = (r: Record<string, unknown>): DepositRequest => ({
   id: Number(r['id']),
+  kind: asMoneyKind(String(r['kind'] ?? 'deposit')),
+  pot: String(r['pot'] ?? 'balance'),
   account: Number(r['account']),
   user: Number(r['user']),
   login: typeof r['login'] === 'string' ? r['login'] : null,
@@ -1141,6 +1252,53 @@ export class GatewayClient {
   /** Confirms the money arrived, or says it did not. */
   adminSettleDeposit(id: number, credit: boolean, detail: string): void {
     this.send({ type: 'adminSettleDeposit', id, credit, detail })
+  }
+
+  /** Approves or refuses anything in the queue, whatever kind. */
+  adminSettle(id: number, approve: boolean, detail: string): void {
+    this.send({ type: 'adminSettle', id, approve, detail })
+  }
+
+  /** The desk moving money without the client asking: bonus, insurance. */
+  adminRaise(kind: MoneyKind, account: number, amount: string, note: string): void {
+    this.send({ type: 'adminRaise', kind, account, amount, note })
+  }
+
+  /** Asks to be paid out, to one of this client's saved places. */
+  requestWithdrawal(payout: number, amount: string, note: string): void {
+    this.send({ type: 'withdrawalRequested', payout, amount, note })
+  }
+
+  payoutMethods(): void {
+    this.send({ type: 'payoutMethods' })
+  }
+
+  savePayoutMethod(m: {
+    id: number | null
+    rail: Rail
+    label: string
+    address: string
+    note: string
+    preferred: boolean
+  }): void {
+    this.send({ type: 'savePayoutMethod', ...m })
+  }
+
+  forgetPayoutMethod(id: number): void {
+    this.send({ type: 'forgetPayoutMethod', id })
+  }
+
+  /** What the house charges, per instrument. */
+  markups(): void {
+    this.send({ type: 'markups' })
+  }
+
+  adminSetMarkup(instrument: number, markup: string): void {
+    this.send({ type: 'adminSetMarkup', instrument, markup })
+  }
+
+  adminSetCommission(instrument: number, commission: string): void {
+    this.send({ type: 'adminSetCommission', instrument, commission })
   }
 
   /** Opens another account for a client, as the desk does over the phone. */

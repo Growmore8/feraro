@@ -27,6 +27,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { Wallet } from '../components/Wallet'
+import type { WalletTab } from '../components/Wallet'
 import { ChartPane } from '../components/ChartPane'
 import { useTape, sparkPath } from '../feed/useTape'
 import type { Trail } from '../feed/useTape'
@@ -77,6 +79,14 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
   const [stars, setStars] = useState<ReadonlySet<number>>(new Set())
   const [ticked, setTicked] = useState<ReadonlySet<number>>(new Set())
   const [period, setPeriod] = useState<Period>('Day')
+  /**
+   * Which side of the wallet is open, or null for closed.
+   *
+   * A full-height sheet rather than a sixth tab. Money is an errand, not a
+   * place: it is done and left, and a tab bar with six entries on a phone
+   * is five targets too small to hit.
+   */
+  const [wallet, setWallet] = useState<WalletTab | null>(null)
 
   const instruments: readonly Instrument[] = gw.instruments.length
     ? gw.instruments
@@ -87,6 +97,12 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
 
   // Fills, stop-outs, margin calls and protections, on this account.
   useChimes(gw.events, gw.positions)
+  useEffect(() => {
+    if (wallet === null) return
+    gw.paymentMethods()
+    gw.payoutMethods()
+  }, [wallet, gw])
+
   const account = gw.account
 
   useEffect(() => {
@@ -438,6 +454,53 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
         ))}
       </nav>
 
+      {/* ── Money ── */}
+      {wallet !== null && account ? (
+        <div className="mob-money">
+          <header className="mob-money-head">
+            <button
+              type="button"
+              className="mob-money-back"
+              onClick={() => setWallet(null)}
+              aria-label="Back"
+            >
+              ‹
+            </button>
+            <span>Your money</span>
+            <span className="mob-money-acct mono">{account.id}</span>
+          </header>
+          <div className="mob-money-body">
+            <Wallet
+              methods={gw.methods}
+              payouts={gw.payouts}
+              mine={gw.myDeposits}
+              account={account.id}
+              live={account.live}
+              credit={account.credit}
+              freeMargin={account.freeMargin}
+              insurance={account.insurance}
+              start={wallet}
+              onDeposit={(method, amount, reference) => {
+                gw.requestDeposit(method, amount, reference)
+                window.setTimeout(() => gw.paymentMethods(), 250)
+              }}
+              onWithdraw={(payout, amount, note) => {
+                gw.requestWithdrawal(payout, amount, note)
+                window.setTimeout(() => gw.paymentMethods(), 250)
+              }}
+              onSavePayout={(m) => {
+                gw.savePayoutMethod(m)
+                window.setTimeout(() => gw.payoutMethods(), 200)
+              }}
+              onForgetPayout={(id) => {
+                gw.forgetPayoutMethod(id)
+                window.setTimeout(() => gw.payoutMethods(), 200)
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Drawer ── */}
       {drawer ? (
         <div className="mob-drawer-back" onClick={() => setDrawer(false)}>
@@ -469,6 +532,29 @@ export function MobileTerminal({ gw, onTheme }: MobileTerminalProps) {
                   {s}
                 </button>
               ))}
+
+              <div className="mob-drawer-rule" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setWallet('in')
+                  setDrawer(false)
+                }}
+              >
+                <span aria-hidden="true">↓</span>
+                Pay in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setWallet('out')
+                  setDrawer(false)
+                }}
+              >
+                <span aria-hidden="true">↑</span>
+                Withdraw
+              </button>
 
               <div className="mob-drawer-rule" />
 

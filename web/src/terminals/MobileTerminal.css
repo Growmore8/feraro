@@ -685,3 +685,67 @@
   margin: 7px 18px;
   background: var(--mob-rule);
 }
+
+
+/* ── Money ──
+
+   A full-height sheet over everything, with its own back arrow, rather
+   than a sixth tab. Money is an errand: it is done and left, and a tab bar
+   with six entries on a phone is five targets too small to hit.
+
+   The body scrolls on its own so the header stays put while a long payout
+   book goes past under it. */
+
+.mob-money {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  background: var(--mob-bg);
+}
+
+.mob-money-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--mob-rule);
+}
+
+.mob-money-back {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mob-money-acct { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+
+.mob-money-body {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* On a phone the wallet's rows stack: a payout line that wrapped into four
+   columns on a desk is one block per field here, and the actions go under
+   the address rather than beside it. */
+@media (max-width: 560px) {
+  .pb-acts { margin-left: 0; width: 100%; }
+  .wd-picks button { max-width: 100%; }
+  .wd-figures { gap: 14px; }
+  .wal-tabs button { flex: 1; justify-content: center; padding: 9px 6px; }
+}

@@ -878,6 +878,463 @@
 .dep-refused .dep-stage { color: var(--loss); }
 
 
+/* ── The request queue ──
+
+   One table for every way money moves. The kind filter is a segmented row
+   rather than a dropdown because the counts matter: a desk wants to see
+   that four withdrawals are waiting without opening anything. */
+
+.rq { display: flex; flex-direction: column; min-height: 0; }
+
+.rq-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.rq-filter button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.rq-filter button:hover { color: var(--ink); background: var(--ground); }
+
+.rq-filter button.on {
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--rule-strong);
+}
+
+/* The count is the reason this row exists, so it keeps its own chip rather
+   than being read as part of the label. */
+.rq-count {
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.rq-filter button:not(.on) .rq-count {
+  color: var(--ink-2);
+  background: var(--rule-strong);
+}
+
+.rq-waiting {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+/* Which pot a movement touches, by colour, so a row is placed before it is
+   read: the balance, the house's bonus, or money set aside. */
+.rq-kind {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 4px;
+  background: var(--ground);
+  color: var(--ink-2);
+}
+
+.rq-bonus { color: var(--credit); background: var(--ground); }
+.rq-insurance { color: var(--accent); background: var(--accent-wash); }
+
+
+/* ── Pricing ──
+
+   Two editable columns and one read-only one. The live spread is dim: it is
+   there to judge the other two by, not to be read on its own. */
+
+.pr { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+.pr-top { display: flex; align-items: center; gap: 10px; font-size: 11.5px; }
+
+.pr-find {
+  flex: 1 1 180px;
+  max-width: 260px;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.pr-wrap { max-height: 56vh; overflow: auto; }
+
+.pr-sym { display: flex; align-items: center; gap: 7px; }
+
+.pr-box {
+  width: 110px;
+  padding: 4px 7px;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: right;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+.pr-box:focus { outline: none; border-color: var(--accent); }
+
+.pr-box:disabled { color: var(--ink-3); background: var(--ground); cursor: not-allowed; }
+
+/* Typed but not yet sent. The box says so, because a figure that looks
+   saved and is not is how a markup gets set twice. */
+.pr-edited {
+  border-color: var(--warn);
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+
+
+/* ── The client's wallet ── */
+
+.wal { display: flex; flex-direction: column; gap: 12px; }
+
+.wal-tabs {
+  display: flex;
+  gap: 2px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wal-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -3px;
+  cursor: pointer;
+}
+
+.wal-tabs button:hover { color: var(--ink); }
+
+.wal-tabs button.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+.wal-count {
+  min-width: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--ink-2);
+  background: var(--ground);
+  border-radius: 999px;
+}
+
+.wal-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+
+.wal-wrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  background: var(--ground);
+  border-radius: 5px;
+}
+
+.wal-wrow .mono { margin-left: auto; }
+
+
+/* ── Withdrawing ──
+
+   The figures come first and the form second, because the first question a
+   client has is how much they may take, not where it goes. */
+
+.wd { display: flex; flex-direction: column; gap: 12px; }
+
+.wd-figures { display: flex; flex-wrap: wrap; gap: 20px; }
+
+.wd-figures > div { display: flex; flex-direction: column; gap: 2px; }
+
+.wd-free { font-size: 17px; font-weight: 600; }
+
+.wd-blocked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn);
+  background: var(--accent-wash);
+  border-radius: 7px;
+}
+
+.wd-link {
+  flex: none;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.wd-where { display: flex; flex-direction: column; gap: 5px; }
+
+.wd-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.wd-picks button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 260px;
+  padding: 7px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--chrome);
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.wd-picks button.on {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.wd-rail {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.wd-label { font-size: 12.5px; font-weight: 600; }
+
+.wd-addr { font-size: 10.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+
+.wd-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+.wd-form label { flex: 1 1 150px; display: flex; flex-direction: column; gap: 3px; }
+
+.wd-form input {
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.wd-form input:disabled { color: var(--ink-4); background: var(--ground); }
+
+.wd-go {
+  flex: none;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.wd-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.wd-too { flex: 1 1 100%; margin: 0; font-size: 11.5px; color: var(--loss); }
+
+.wd-sent { flex: 1 1 100%; margin: 0; font-size: 11.5px; color: var(--profit); }
+
+.wd-says { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+
+
+/* ── Where to be paid ──
+
+   The address is shown in full and never truncated. A shortened address is
+   one nobody can check, and checking it is the whole reason these are
+   saved rather than typed each time. */
+
+.pb { display: flex; flex-direction: column; gap: 10px; }
+
+.pb-none { margin: 0; padding: 14px 4px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+
+.pb-list { display: flex; flex-direction: column; gap: 6px; }
+
+.pb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 11px;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+}
+
+.pb-pref { border-color: var(--accent); }
+
+.pb-rail {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.pb-label { font-size: 12.5px; font-weight: 600; }
+
+.pb-addr { flex: 1 1 200px; font-size: 11.5px; color: var(--ink-2); overflow-wrap: anywhere; user-select: all; }
+
+.pb-note { flex: 1 1 100%; font-size: 11px; }
+
+.pb-acts { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+
+.pb-is {
+  padding: 1px 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.pb-mini {
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.pb-mini:hover { color: var(--ink); border-color: var(--ink-3); }
+
+.pb-mini.bad:hover { color: var(--loss); border-color: var(--loss); }
+
+.pb-add {
+  align-self: flex-start;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px dashed var(--rule-strong);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.pb-add:hover { border-color: var(--accent); border-style: solid; }
+
+.pb-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--ground);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+}
+
+.pb-rails { display: flex; gap: 6px; }
+
+.pb-rails button {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pb-rails button.on {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pb-form label { display: flex; flex-direction: column; gap: 3px; }
+
+.pb-form input[type='text'],
+.pb-form input:not([type]) {
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+}
+
+.pb-check { flex-direction: row !important; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+.pb-feet { display: flex; justify-content: flex-end; gap: 6px; }
+
+.pb-cancel {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pb-go {
+  padding: 7px 16px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pb-go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.pb-warn { margin: 0; font-size: 11px; line-height: 1.5; color: var(--warn); }
+
 /* ── The shared visual language ──
 
    Rounded cards, hairline rules, and colour used only where it carries
